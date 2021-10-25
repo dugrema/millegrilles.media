@@ -1,0 +1,25 @@
+{
+  "name": "millegrilles.media",
+  "version": "1.46.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./bin/www",
+    "test": "node ./node_modules/jest/bin/jest.js $1"
+  },
+  "dependencies": {
+    "@dugrema/millegrilles.common": "git+https://github.com/dugrema/millegrilles.common.nodejs.git#1.46",
+    "axios": "^0.23.0",
+    "debug": "~4.3.2",
+    "express": "~4.17.1",
+    "fluent-ffmpeg": "^2.1.2",
+    "imagemagick": "^0.1.3",
+    "morgan": "~1.10.0",
+    "pdf-parse": "^1.1.1",
+    "spdy": "^4.0.2",
+    "stream-buffers": "^3.0.2",
+    "tmp-promise": "^3.0.2"
+  },
+  "devDependencies": {
+    "jest": "^27.3.1"
+  }
+}

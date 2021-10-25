@@ -1,0 +1,11 @@
+.gitignore
+.git
+dev
+scripts
+backup_uploads/
+*.log
+Dockerfile
+image_info.txt
+*.sh
+nodejsmedia/
+node_modules/
