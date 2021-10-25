@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+
+require('dotenv').config()
+const debug = require('debug')('millegrilles:www')
+
+console.info("Env vars : %O", process.env)
+
+const express = require('express')
+const logger = require('morgan')
+const redis = require("redis")
+
+const {initialiser: initialiserServer} = require('./server')
+const {initialiser: initialiserApp} = require('./app');
+const amqpdao = require('./amqpdao')
+
+async function init() {
+
+  // Preparer client redis (cache)
+  const redisHost = process.env.MG_REDIS_HOST || 'redis',
+        redisPortStr = process.env.MG_REDIS_PORT || '6379'
+  const redisClient = redis.createClient({
+    host: redisHost,
+    port: Number(redisPortStr),
+  })
+
+  // Connexion AMQ
+  const {amqpdao: instAmqpdao} = await amqpdao.init({redisClient})
+  const idmg = instAmqpdao.pki.idmg
+
+  debug("Initialisation serveur IDMG : %s", idmg)
+
+  const middleware = [
+    logger('dev'),
+    (req, res, next) => {
+      req.amqpdao = instAmqpdao
+      req.rabbitMQ = instAmqpdao
+      req.idmg = idmg
+      next()
+    }
+  ]
+
+  const root = await initialiserApp({middleware, mq: instAmqpdao})
+  const serverInstance = initialiserServer(root)
+
+}
+
+init()
