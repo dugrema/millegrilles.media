@@ -53,14 +53,14 @@ async function init(opts) {
 
 async function initialiserRabbitMQ(rabbitMQ) {
   // Creer objets de connexion a MQ - importer librairies requises
-  // const {PkiMessages} = require('../messages/pki');
-  // rabbitMQ.enregistrerListenerConnexion(new PkiMessages(rabbitMQ));
+  const {PkiMessages} = require('./messages/pki');
+  rabbitMQ.enregistrerListenerConnexion(new PkiMessages(rabbitMQ));
 
   // const {DecrypterFichier} = require('../messages/crypto');
   // rabbitMQ.enregistrerListenerConnexion(new DecrypterFichier(rabbitMQ));
 
-  // const {GenerateurMedia} = require('../messages/media');
-  // rabbitMQ.enregistrerListenerConnexion(new GenerateurMedia(rabbitMQ));
+  const {GenerateurMedia} = require('./messages/media');
+  rabbitMQ.enregistrerListenerConnexion(new GenerateurMedia(rabbitMQ));
 
   // const {GestionnaireMessagesBackup} = require('../messages/backup')
   // rabbitMQ.enregistrerListenerConnexion(new GestionnaireMessagesBackup(rabbitMQ))
