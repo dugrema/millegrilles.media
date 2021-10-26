@@ -3,7 +3,7 @@ const traitementMedia = require('../traitementMedia.js')
 const { traiterCommandeTranscodage } = require('../transformationsVideo')
 const transfertConsignation = require('../transfertConsignation')
 
-const urlServeurIndex = process.env.MG_SERVEUR_INDEX_URL || 'http://elasticsearch:9200'
+const urlServeurIndex = process.env.MG_ELASTICSEARCH_URL || 'http://elasticsearch:9200'
 const urlConsignationFichiers = process.env.MG_FICHIERS_URL || 'https://fichiers:443'
 
 const EXPIRATION_MESSAGE_DEFAUT = 15 * 60 * 1000,  // 15 minutes en millisec
@@ -56,7 +56,10 @@ function enregistrerChannel() {
     }
   )
   _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return _indexerDocumentContenu(message)},
+    (routingKey, message)=>{
+      debug("indexerContenu : rk (%s) = %O", routingKey, message)
+      return _indexerDocumentContenu(message)
+    },
     ['commande.fichiers.indexerContenu'],
     {
       operationLongue: true,
@@ -179,7 +182,7 @@ async function genererPreviewVideo(message) {
     console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
     return
   }
-  const {cleDechiffree, informationCle, clesPubliques} = await recupererCle(mq, hachageFichier, message)
+  const {cleDechiffree, informationCle, clesPubliques} = await recupererCle(hachageFichier, message)
 
   const optsConversion = {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
 
@@ -236,7 +239,7 @@ function _traiterCommandeTranscodage(mq, pathConsignation, message) {
     })
 }
 
-async function _indexerDocumentContenu(mq, pathConsignation, message) {
+async function _indexerDocumentContenu(message) {
   debug("Traitement _indexerDocumentContenu : %O", message)
 
   // Verifier si la commande est expiree
@@ -246,16 +249,35 @@ async function _indexerDocumentContenu(mq, pathConsignation, message) {
   }
 
   const fuuid = message.fuuid
-  const {cleDechiffree, informationCle, clesPubliques} = await recupererCle(mq, fuuid, message)
-  const optsConversion = {urlServeurIndex, cleSymmetrique: cleDechiffree, metaCle: informationCle}
-  await traitementMedia.indexerDocument(mq, pathConsignation, message, optsConversion)
+  var mimetype = message.mimetype || message.doc?message.doc.mimetype:null
 
-  const commandeResultat = { ok: true, fuuid }
-  await mq.transmettreCommande(
-    "GrosFichiers",
-    commandeResultat,
-    {action: 'confirmerFichierIndexe', ajouterCertificat: true, nowait: true}
-  )
+  debug("Indexer %s type %s", fuuid, mimetype)
+
+  const cleFichier = await recupererCle(fuuid, message)
+  const {cleDechiffree, informationCle, clesPubliques} = cleFichier
+
+  // Downloader et dechiffrer le fichier
+  const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+    fuuid, mimetype, cleFichier)
+
+  try {
+    debug("Fichier dechiffre pour indexation : %s", fichierDechiffre)
+    const optsConversion = {urlServeurIndex}
+
+    await traitementMedia.indexerDocument(_mq, fichierDechiffre, message, optsConversion)
+
+    const commandeResultat = { ok: true, fuuid }
+
+    debug("Commande resultat indexation : %O", commandeResultat)
+
+    await _mq.transmettreCommande(
+      "GrosFichiers",
+      commandeResultat,
+      {action: 'confirmerFichierIndexe', ajouterCertificat: true, nowait: true}
+    )
+  } finally {
+    if(cleanup) cleanup()
+  }
 }
 
 async function recupererCle(hachageFichier, permission) {
