@@ -177,6 +177,7 @@ async function convertir(
             ...resultat.informationImage,
             hachage: resultatChiffrage.meta.hachage_bytes,
             taille: resultatChiffrage.tailleFichier,
+            data_chiffre: resultatChiffrage.data,
           },
           commandeMaitreCles: resultatChiffrage.commandeMaitreCles,
         }
