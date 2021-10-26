@@ -287,9 +287,7 @@ async function chiffrerMemoire(mq, fichierSrc, clesPubliques, opts) {
       if(opts.base64 === true) {
         // Convertir les bytes en base64
         const ab = Uint8Array.from(buffer)
-        console.info("!!! AB thumbnail : %O", ab)
         buffer = String.fromCharCode.apply(null, multibase.encode('base64', ab))
-        console.info("!!! base64 buffer : %O", buffer)
       }
 
       debug("Information chiffrage fichier : %O", informationChiffrage)
