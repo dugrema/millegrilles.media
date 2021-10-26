@@ -21,10 +21,10 @@ function genererPreviewImage(mq, fichierDechiffre, message, opts) {
   return _genererPreview(mq, fichierDechiffre, message, opts, fctConversion)
 }
 
-function genererPreviewVideo(mq, pathConsignation, message, opts) {
+function genererPreviewVideo(mq, fichierDechiffre, message, opts) {
   if(!opts) opts = {}
   const fctConversion = traiterVideo
-  return _genererPreview(mq, pathConsignation, message, opts, fctConversion)
+  return _genererPreview(mq, fichierDechiffre, message, opts, fctConversion)
 }
 
 async function _genererPreview(mq, fichierDechiffre, message, opts, fctConversion) {

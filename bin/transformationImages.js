@@ -19,12 +19,12 @@ async function preparerBase64(sourcePath, opts) {
 async function genererPosterVideo(sourcePath, opts) {
   // Preparer fichier destination decrypte
   // Aussi preparer un fichier tmp pour le thumbnail
-  const {mq, chiffrerTemporaire, deplacerVersStorage, clesPubliques, pathConsignation, fuuid} = opts
+  const {mq, clesPubliques, fuuid} = opts
 
-  // const tmpFile = await tmp.file({ mode: 0o600, postfix: '.jpg' })
+  const tmpFile = await tmp.file({ mode: 0o600, postfix: '.jpg' })
 
   try {
-    // const snapshotPath = tmpFile.path
+    const snapshotPath = tmpFile.path
 
     // Extraire une image du video
     const metadata = await genererSnapshotVideoPromise(sourcePath, snapshotPath)
@@ -53,6 +53,8 @@ async function genererPosterVideo(sourcePath, opts) {
 
   } catch(err) {
     console.error("ERROR transformationImages.genererPosterVideo Erreur creation thumbnail/poster video : %O", err)
+  } finally {
+    tmpFile.cleanup()
   }
 
 }

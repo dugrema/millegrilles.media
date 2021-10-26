@@ -101,64 +101,103 @@ async function genererPreviewImage(message) {
     const resultatConversion = await traitementMedia.genererPreviewImage(
       _mq, fichierDechiffre, message, {clesPubliques, fuuid: hachageFichier})
     debug("Fin traitement thumbnails/posters, resultat : %O", resultatConversion)
-
-    const {nbFrames, conversions} = resultatConversion
-    const metadataImage = resultatConversion.metadataImage || {}
-
-    // Extraire information d'images converties sous un dict
-    let resultatPreview = null  // Utiliser poster (legacy)
-    const images = {}
-    const identificateurs_document = {type: 'image', fuuid_reference: hachageFichier}
-    for(let idx in conversions) {
-      const conversion = conversions[idx]
-      debug("!!!CONVERSION : %O", conversion)
-      const resultat = {...conversion.informationImage}
-      const cle = conversion.cle
-      images[cle] = resultat
-
-      if(conversion.fichierTmp) {
-        // Chiffrer et uploader le fichier tmp
-        const {hachage, taille} = await transfertConsignation.uploaderFichierTraite(
-          _mq, conversion.fichierTmp, clesPubliques, identificateurs_document)
-        // Ajouter nouveau hachage (fuuid fichier converti)
-        resultat.hachage = hachage
-        resultat.taille = taille
-      }
-      if (conversion.commandeMaitreCles) {
-        // Emettre la commande de maitre des cles
-        const commandeMaitreCles = conversion.commandeMaitreCles
-        const partition = commandeMaitreCles._partition
-        delete commandeMaitreCles._partition
-        await _mq.transmettreCommande(DOMAINE_MAITREDESCLES, commandeMaitreCles, {action: ACTION_SAUVEGARDERCLE, partition})
-      }
-
-    }
-
-    // Transmettre transaction preview
-    // const domaineActionAssocierPreview = 'GrosFichiers.associerPreview'
-    // const domaineActionAssocier = 'GrosFichiers.associerConversions'
-    const transactionAssocier = {
-      tuuid: message.tuuid,
-      fuuid: hachageFichier,  // message.fuuid,
-      images,
-      width: metadataImage.width,
-      height: metadataImage.height,
-      mimetype: metadataImage['mime type'],
-    }
-    // Determiner si on a une image animee (fichier avec plusieurs frames, sauf PDF (plusieurs pages))
-    const estPdf = transactionAssocier.mimetype === 'application/pdf'
-    if(!estPdf && nbFrames > 1) transactionAssocier.anime = true
-
-    debug("Transaction associer images converties : %O", transactionAssocier)
-
-    _mq.transmettreTransactionFormattee(transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true})
-      .catch(err=>{
-        console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
-      })
   } finally {
-    // Effacer fichier tmp
-    cleanup()
+    cleanup()  // Nettoyer fichier dechiffre temporaire
   }
+
+  const {nbFrames, conversions} = resultatConversion
+  const metadataImage = resultatConversion.metadataImage || {}
+
+  // Transmettre transaction preview
+  const transactionAssocier = {
+    tuuid: message.tuuid,
+    fuuid: hachageFichier,  // message.fuuid,
+    images,
+    width: metadataImage.width,
+    height: metadataImage.height,
+    mimetype: metadataImage['mime type'],
+  }
+  // Determiner si on a une image animee (fichier avec plusieurs frames, sauf PDF (plusieurs pages))
+  const estPdf = transactionAssocier.mimetype === 'application/pdf'
+  if(!estPdf && nbFrames > 1) transactionAssocier.anime = true
+
+  const images = await traiterConversions(hachageFichier, conversions, clesPubliques)
+  transactionAssocier.images = images
+
+  debug("Transaction associer images converties : %O", transactionAssocier)
+  _mq.transmettreTransactionFormattee(
+    transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true}
+  ).catch(err=>{
+      console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
+    })
+
+
+  // // Extraire information d'images converties sous un dict
+  // let resultatPreview = null  // Utiliser poster (legacy)
+  // const images = {}
+  // const identificateurs_document = {type: 'image', fuuid_reference: hachageFichier}
+  // for(let idx in conversions) {
+  //   const conversion = conversions[idx]
+  //   const resultat = {...conversion.informationImage}
+  //   const cle = conversion.cle
+  //   images[cle] = resultat
+  //
+  //   if(conversion.fichierTmp) {
+  //     // Chiffrer et uploader le fichier tmp
+  //     const {hachage, taille} = await transfertConsignation.uploaderFichierTraite(
+  //       _mq, conversion.fichierTmp, clesPubliques, identificateurs_document)
+  //     // Ajouter nouveau hachage (fuuid fichier converti)
+  //     resultat.hachage = hachage
+  //     resultat.taille = taille
+  //   }
+  //   if (conversion.commandeMaitreCles) {
+  //     // Emettre la commande de maitre des cles
+  //     const commandeMaitreCles = conversion.commandeMaitreCles
+  //     const partition = commandeMaitreCles._partition
+  //     delete commandeMaitreCles._partition
+  //     await _mq.transmettreCommande(DOMAINE_MAITREDESCLES, commandeMaitreCles, {action: ACTION_SAUVEGARDERCLE, partition})
+  //   }
+  //
+  // }
+  //
+  // debug("Transaction associer images converties : %O", transactionAssocier)
+  // _mq.transmettreTransactionFormattee(
+  //   transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true}
+  // ).catch(err=>{
+  //     console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
+  //   })
+}
+
+async function traiterConversions(fuuid, conversions, clesPubliques) {
+  // Extraire information d'images converties sous un dict
+  const images = {}
+
+  const identificateurs_document = {type: 'image', fuuid_reference: fuuid}
+  for(let idx in conversions) {
+    const conversion = conversions[idx]
+    const resultat = {...conversion.informationImage}
+    const cle = conversion.cle
+    images[cle] = resultat
+
+    if(conversion.fichierTmp) {
+      // Chiffrer et uploader le fichier tmp
+      const {hachage, taille} = await transfertConsignation.uploaderFichierTraite(
+        _mq, conversion.fichierTmp, clesPubliques, identificateurs_document)
+      // Ajouter nouveau hachage (fuuid fichier converti)
+      resultat.hachage = hachage
+      resultat.taille = taille
+    }
+
+    if (conversion.commandeMaitreCles) {
+      // Emettre la commande de maitre des cles
+      const commandeMaitreCles = conversion.commandeMaitreCles
+      const partition = commandeMaitreCles._partition
+      delete commandeMaitreCles._partition
+      await _mq.transmettreCommande(DOMAINE_MAITREDESCLES, commandeMaitreCles, {action: ACTION_SAUVEGARDERCLE, partition})
+    }
+  }
+
+  return images
 }
 
 async function genererPreviewVideo(message) {
@@ -171,9 +210,12 @@ async function genererPreviewVideo(message) {
     return
   }
 
+  debug("Traitement genererPreviewVideo : %O", message)
+
   // Transmettre demande cle et attendre retour sur l'autre Q (on bloque Q operations longues)
   const versionCourante = message.version_courante || {},
-        hachageFichier = message.fuuid || message.hachage || message.fuuid_v_courante || versionCourante.fuuid || versionCourante.hachage
+        hachageFichier = message.fuuid || message.hachage || message.fuuid_v_courante || versionCourante.fuuid || versionCourante.hachage,
+        mimetype = message.mimetype
   // if(message.version_courante) {
   //   // C'est une retransmission
   //   hachageFichier = message.version_courante.hachage
@@ -182,43 +224,55 @@ async function genererPreviewVideo(message) {
     console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
     return
   }
-  const {cleDechiffree, informationCle, clesPubliques} = await recupererCle(hachageFichier, message)
+  const cleFichier = await recupererCle(hachageFichier, message)
+  const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
-  const optsConversion = {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
-
-  debug("Debut generation preview")
-  const resultatConversion = await traitementMedia.genererPreviewVideo(mq, pathConsignation, message, optsConversion)
-  debug("Fin traitement preview, resultat : %O", resultatConversion)
-
-  const {metadataImage, metadataVideo, nbFrames, conversions} = resultatConversion
-
-  // Extraire information d'images converties sous un dict
-  let resultatPreview = null  // Utiliser poster (legacy)
-  const images = {}
-  for(let idx in conversions) {
-    const conversion = conversions[idx]
-    const resultat = {...conversion.informationImage}
-    const cle = resultat.cle
-    delete resultat.cle
-    images[cle] = resultat
-  }
+  // Downloader et dechiffrer le fichier
+  const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+    hachageFichier, mimetype, cleFichier)
 
   // Transmettre transaction preview
   // const domaineActionAssocierPreview = 'GrosFichiers.associerPreview'
+  var resultatConversion = null
+  try {
+    const optsConversion = {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
+    debug("Debut generation preview")
+    resultatConversion = await traitementMedia.genererPreviewVideo(_mq, fichierDechiffre, message, optsConversion)
+    debug("Fin traitement preview, resultat : %O", resultatConversion)
+  } finally {
+    cleanup()  // Supprimer fichier dechiffre temporaire
+  }
+
+  const {metadataImage, metadataVideo, nbFrames, conversions} = resultatConversion
+
   const transactionAssocier = {
     tuuid: message.tuuid,
     fuuid: message.fuuid,
-    images,
     width: metadataImage.width,
     height: metadataImage.height,
-    // mimetype: metadataImage['mime type'],
+    mimetype: mimetype,
     metadata: metadataVideo,
   }
   transactionAssocier.anime = true
 
+  // Extraire information d'images converties sous un dict
+  let resultatPreview = null  // Utiliser poster (legacy)
+  const images = await traiterConversions(hachageFichier, conversions, clesPubliques)
+  transactionAssocier.images = images
+
+  // for(let idx in conversions) {
+  //   const conversion = conversions[idx]
+  //   const resultat = {...conversion.informationImage}
+  //   const cle = resultat.cle
+  //   delete resultat.cle
+  //   images[cle] = resultat
+  // }
+
   debug("Transaction associer images converties : %O", transactionAssocier)
 
-  mq.transmettreTransactionFormattee(transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true})
+  _mq.transmettreTransactionFormattee(
+    transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true}
+  )
     .catch(err=>{
       console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
       debug("ERROR media.genererPreviewImage Erreur association conversions d'image message %O", message)
