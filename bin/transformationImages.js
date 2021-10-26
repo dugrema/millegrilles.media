@@ -7,6 +7,8 @@ const crypto = require('crypto')
 const multibase = require('multibase')
 const FFmpeg = require('fluent-ffmpeg')
 
+const {chiffrerMemoire} = require('./cryptoUtils')
+
 async function preparerBase64(sourcePath, opts) {
   // Lire le fichier converti en memoire pour transformer en base64
   const fichierBuffer = Buffer.from(await fs.promises.readFile(sourcePath))
@@ -19,10 +21,10 @@ async function genererPosterVideo(sourcePath, opts) {
   // Aussi preparer un fichier tmp pour le thumbnail
   const {mq, chiffrerTemporaire, deplacerVersStorage, clesPubliques, pathConsignation, fuuid} = opts
 
-  const tmpFile = await tmp.file({ mode: 0o600, postfix: '.jpg' })
+  // const tmpFile = await tmp.file({ mode: 0o600, postfix: '.jpg' })
 
   try {
-    const snapshotPath = tmpFile.path
+    // const snapshotPath = tmpFile.path
 
     // Extraire une image du video
     const metadata = await genererSnapshotVideoPromise(sourcePath, snapshotPath)
@@ -33,22 +35,24 @@ async function genererPosterVideo(sourcePath, opts) {
     debug("Information de conversion d'images du video : medataImage %O\nconversions %O", metadataImage, conversions)
 
     // Effectuer les conversions pour tous les formats
-    const promisesChiffrage = await convertir(
-      mq, chiffrerTemporaire, deplacerVersStorage, clesPubliques, sourcePath, pathConsignation, fuuid, conversions)
+    const promisesConversions = await convertir(
+      mq,
+      // chiffrerTemporaire, deplacerVersStorage,
+      clesPubliques,
+      sourcePath,
+      // pathConsignation,
+      fuuid,
+      conversions
+    )
 
     // Recuperer l'information de chaque image convertie
-    // Note : un echec sur une promise indique que la cle de chiffrage
-    //        n'a PAS ete conservee.
-    const chiffrageComplete = await Promise.all(promisesChiffrage)
-    debug("Information de chiffrage complete : %O", chiffrageComplete)
+    const resultatConversions = await Promise.all(promisesConversions)
+    debug("Information de conversions completees : %O", resultatConversions)
 
-    return {metadataImage, metadataVideo: metadata, conversions: chiffrageComplete}
+    return {metadataImage, metadataVideo: metadata, conversions: resultatConversions}
 
   } catch(err) {
-    console.error("ERROR transformationImages.genererPosterVideo Erreur creation thumbnail video : %O", err)
-  } finally {
-    // Effacer le fichier temporaire
-    tmpFile.cleanup()
+    console.error("ERROR transformationImages.genererPosterVideo Erreur creation thumbnail/poster video : %O", err)
   }
 
 }
@@ -58,8 +62,11 @@ async function genererPosterVideo(sourcePath, opts) {
 // }
 
 async function genererConversionsImage(sourcePath, opts) {
-  debug("genererPreviewImage avec %s", sourcePath)
-  const {mq, chiffrerTemporaire, deplacerVersStorage, clesPubliques, pathConsignation, fuuid} = opts
+  debug("genererConversionsImage avec %s", sourcePath)
+  const {
+    mq, clesPubliques, fuuid,
+    //chiffrerTemporaire, deplacerVersStorage, pathConsignation,
+  } = opts
 
   // const b64Thumbnail = await genererThumbnail(sourcePath)
   //debug("Thumbnail genere en base64\n%s", b64Thumbnail)
@@ -67,23 +74,38 @@ async function genererConversionsImage(sourcePath, opts) {
   debug("Information de conversion d'images : %O", conversions)
 
   // Effectuer les conversions pour tous les formats
-  const promisesChiffrage = await convertir(
-    mq, chiffrerTemporaire, deplacerVersStorage, clesPubliques, sourcePath, pathConsignation, fuuid, conversions)
+  const promisesConversions = await convertir(
+    mq,
+    // chiffrerTemporaire, deplacerVersStorage,
+    clesPubliques,
+    sourcePath,
+    // pathConsignation,
+    fuuid,
+    conversions
+  )
 
   // Recuperer l'information de chaque image convertie
   // Note : un echec sur une promise indique que la cle de chiffrage
   //        n'a PAS ete conservee.
-  const chiffrageComplete = await Promise.all(promisesChiffrage)
-  debug("Information de chiffrage complete : %O", chiffrageComplete)
+  const resultatsConversions = await Promise.all(promisesConversions)
+  debug("Information de conversions completees : %O", resultatsConversions)
 
-  return {metadataImage, nbFrames, conversions: chiffrageComplete}
+  return {metadataImage, nbFrames, conversions: resultatsConversions}
 }
 
-async function convertir(mq, chiffrerTemporaire, deplacerVersStorage, clesPubliques, sourcePath, pathConsignation, fuuid, conversions) {
+async function convertir(
+  mq,
+  // chiffrerTemporaire, deplacerVersStorage,
+  clesPubliques,
+  sourcePath,
+  // pathConsignation,
+  fuuid,
+  conversions
+) {
   // NOTE : bloque sur les conversions mais retourne une liste de promises
   //        qui servent a confirmer la reception des cles de chiffrage de chaque
   //        image convertie.
-  const promisesChiffrage = []
+  const resultatsConversions = []
 
   for(let cle in conversions) {
     const cp = conversions[cle]
@@ -115,64 +137,104 @@ async function convertir(mq, chiffrerTemporaire, deplacerVersStorage, clesPubliq
     }
 
     // Creer promise pour continuer le traitement de chiffrage
-    const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs2' })
+    // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs2' })
     const promiseChiffrage = readIdentify(fichierTmp.path).then(async metaConversion=>{
       // Recuperer information image convertie
       debug("Information meta image convertie params %O : %O", cp, metaConversion)
 
-      // Chiffrer le resultat, conserver information pour transactions maitre des cles
-      const resultatChiffrage = await chiffrerTemporaire(
-        mq, fichierTmp.path, fichierChiffreTmp.path, clesPubliques, {
-          identificateurs_document: {type: 'image', fuuid_reference: fuuid}
-        })
-
-      let data = null
-      if(cle === 'thumb') {
-        // Traitement special pour thumbnail, on l'insere inline
-        data = await preparerBase64(fichierChiffreTmp.path)
-        fichierChiffreTmp.cleanup()  // Supprimer fichier tmp
-      } else {
-        // Deplacer le fichier vers le stockage permanent
-        await deplacerVersStorage(pathConsignation, resultatChiffrage, fichierChiffreTmp)
-      }
-
-      const informationImage = {
+      var resultat = {
         cle,
-        hachage: resultatChiffrage.meta.hachage_bytes,
-        width: metaConversion.width,
-        height: metaConversion.height,
-        mimetype: metaConversion['mime type'],
-        taille: resultatChiffrage.tailleFichier,
-        resolution: cp.resolution,
-      }
-      if(data) informationImage.data_chiffre = data
-
-      // Transmettre transaction info chiffrage
-      const domaine = 'MaitreDesCles'
-      const action = 'sauvegarderCle'
-      const commandeMaitreCles = resultatChiffrage.commandeMaitreCles
-      const partition = commandeMaitreCles._partition
-      delete commandeMaitreCles._partition
-      await mq.transmettreCommande(domaine, commandeMaitreCles, {action: 'sauvegarderCle', partition})
-
-      return {
-        metaConversion,
-        informationImage,
-        ...resultatChiffrage,
+        informationImage: {
+          width: metaConversion.width,
+          height: metaConversion.height,
+          mimetype: metaConversion['mime type'],
+          resolution: cp.resolution,
+        }
       }
 
+      if(cle === 'thumb') {
+        // Le thumbnail est extrait et conserve dans la base de donnees
+        // Chiffrer le resultat, conserver information pour transactions maitre des cles
+        // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs2' })
+        const resultatChiffrage = await chiffrerMemoire(mq, fichierTmp.path, clesPubliques, {
+          base64: true,
+          identificateurs_document: {type: 'image', fuuid_reference: fuuid},
+        })
+        // const resultatChiffrage = await chiffrerTemporaire(
+        //   mq, fichierTmp.path, fichierChiffreTmp.path, clesPubliques, {
+        //     identificateurs_document: {type: 'image', fuuid_reference: fuuid}
+        //   })
+
+        // Traitement special pour thumbnail, on l'insere inline
+        // data = await preparerBase64(fichierChiffreTmp.path)
+        // Supprimer fichiers tmp
+        // fichierChiffreTmp.cleanup()
+        fichierTmp.cleanup()
+
+        resultat = {
+          ...resultat,
+          informationImage: {
+            ...resultat.informationImage,
+            hachage: resultatChiffrage.meta.hachage_bytes,
+            taille: resultatChiffrage.tailleFichier,
+          },
+          commandeMaitreCles: resultatChiffrage.commandeMaitreCles,
+        }
+
+        // // Transmettre transaction info chiffrage
+        // const domaine = 'MaitreDesCles'
+        // const action = 'sauvegarderCle'
+        // const commandeMaitreCles = resultatChiffrage.commandeMaitreCles
+        // const partition = commandeMaitreCles._partition
+        // delete commandeMaitreCles._partition
+        // await mq.transmettreCommande(domaine, commandeMaitreCles, {action: 'sauvegarderCle', partition})
+      }
+      else {
+        // Copier path du fichier temporaire, il va etre chiffrer a l'upload
+        resultat.fichierTmp = fichierTmp
+      }
+
+      debug("Resultat preparation image : %O", resultat)
+      return resultat
+
+    //   const informationImage = {
+    //     cle,
+    //     hachage: resultatChiffrage.meta.hachage_bytes,
+    //     width: metaConversion.width,
+    //     height: metaConversion.height,
+    //     mimetype: metaConversion['mime type'],
+    //     taille: resultatChiffrage.tailleFichier,
+    //     resolution: cp.resolution,
+    //   }
+    //   if(data) informationImage.data_chiffre = data
+    //
+    //   // Transmettre transaction info chiffrage
+    //   const domaine = 'MaitreDesCles'
+    //   const action = 'sauvegarderCle'
+    //   const commandeMaitreCles = resultatChiffrage.commandeMaitreCles
+    //   const partition = commandeMaitreCles._partition
+    //   delete commandeMaitreCles._partition
+    //   await mq.transmettreCommande(domaine, commandeMaitreCles, {action: 'sauvegarderCle', partition})
+    //
+    //   return {
+    //     metaConversion,
+    //     informationImage,
+    //     ...resultatChiffrage,
+    //   }
+    //
     })
     .catch(err => {
-      fichierChiffreTmp.cleanup()
+      // fichierChiffreTmp.cleanup()
       throw err
     })
     .finally(_=>{
-      fichierTmp.cleanup()  // Supprimer fichier tmp non chiffre
+      // fichierTmp.cleanup()  // Supprimer fichier tmp non chiffre
     })
-    promisesChiffrage.push(promiseChiffrage)
+
+    resultatsConversions.push(promiseChiffrage)
   }
 
-  return promisesChiffrage
+  return resultatsConversions
 }
 
 async function determinerConversionsImages(sourcePath) {

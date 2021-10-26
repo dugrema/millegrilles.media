@@ -168,69 +168,69 @@ class TraitementFichier {
     this.pathConsignation = new PathConsignation({idmg});
   }
 
-  async traiterPut(req) {
-    try {
-      // Sauvegarde le fichier dans le repertoire de consignation local.
-      const pathConsignation = new PathConsignation({idmg: req.autorisationMillegrille.idmg})
-
-      // Le nom du fichier au complet, incluant path, est fourni dans fuuide.
-      const transactionFichier = JSON.parse(req.body['transaction-fichier'])
-      const transactionChiffrage = JSON.parse(req.body['transaction-chiffrage'])
-
-      // Valider la signature de la transaction
-      // Injecter le certificat recu pour s'assurer qu'il est distribue
-      transactionFichier['_certificat'] = req.certificat
-      transactionChiffrage['_certificat'] = req.certificat
-
-      const transactionValideFichier = await this.rabbitMQ.pki.verifierSignatureMessage(transactionFichier)
-      const transactionValideChiffrage = await this.rabbitMQ.pki.verifierSignatureMessage(transactionChiffrage)
-      const hachageTransactionChiffrage = await this.rabbitMQ.pki.hacherTransaction(transactionChiffrage)
-      const hachageTransactionFichier = await this.rabbitMQ.pki.hacherTransaction(transactionFichier)
-
-      const hachageTransactionChiffrageEntete = transactionChiffrage['en-tete']['hachage_contenu']
-      const hachageTransactionFichierEntete = transactionFichier['en-tete']['hachage_contenu']
-
-      debug("Hachage transaction chiffrage calcule : %O\nHachage chiffrage fichier entete : %O",
-        hachageTransactionChiffrage, hachageTransactionChiffrageEntete)
-      debug("Hachage transaction fichier calcule : %O\nHachage transaction fichier entete : %O",
-        hachageTransactionFichier, hachageTransactionFichierEntete)
-
-      const hachageValideChiffrage = hachageTransactionChiffrage === hachageTransactionChiffrageEntete
-      const hachageValideFichier = hachageTransactionFichier === hachageTransactionFichierEntete
-
-      if( ! (transactionValideFichier && transactionValideChiffrage && hachageValideChiffrage && hachageValideFichier) ) {
-        throw new Error(`Erreur validation transactions. Fichier signature:${transactionValideFichier}/hachage:${hachageValideFichier}. Chiffrage signature:${transactionValideChiffrage}/hachage:${hachageValideChiffrage}`)
-      }
-
-      // console.debug(headers);
-      const fuuid = transactionFichier.fuuid
-      const encrypte = transactionFichier.securite === '3.protege'
-      const extension = path.parse(transactionFichier.nom_fichier).ext.replace('.', '')
-      const mimetype = transactionFichier.mimetype
-
-      let nouveauPathFichier = pathConsignation.trouverPathLocal(fuuid, encrypte, {extension, mimetype});
-
-      // Creer le repertoire au besoin, puis deplacer le fichier (rename)
-      const hachage = await calculHachage(req, transactionFichier.hachage)
-
-      // Transmettre les transactions et deplacer le fichier
-      await deplacerFichier(req, nouveauPathFichier)
-      debug("Transmettre transaction chiffrage")
-      await this.rabbitMQ.transmettreEnveloppeCommande(transactionChiffrage)
-      debug("Transmettre transaction fichier")
-      await this.rabbitMQ.transmettreEnveloppeTransaction(transactionFichier)
-
-      return({hachage})
-    } finally {
-      // Cleanup fichier upload
-      const fichierPath = req.file.path
-      fs.unlink(fichierPath, err=>{
-        if(err) console.error("Erreur unlink sous multer " + fichierPath)
-      })
-    }
-  }
-
-}
+//   async traiterPut(req) {
+//     try {
+//       // Sauvegarde le fichier dans le repertoire de consignation local.
+//       const pathConsignation = new PathConsignation({idmg: req.autorisationMillegrille.idmg})
+//
+//       // Le nom du fichier au complet, incluant path, est fourni dans fuuide.
+//       const transactionFichier = JSON.parse(req.body['transaction-fichier'])
+//       const transactionChiffrage = JSON.parse(req.body['transaction-chiffrage'])
+//
+//       // Valider la signature de la transaction
+//       // Injecter le certificat recu pour s'assurer qu'il est distribue
+//       transactionFichier['_certificat'] = req.certificat
+//       transactionChiffrage['_certificat'] = req.certificat
+//
+//       const transactionValideFichier = await this.rabbitMQ.pki.verifierSignatureMessage(transactionFichier)
+//       const transactionValideChiffrage = await this.rabbitMQ.pki.verifierSignatureMessage(transactionChiffrage)
+//       const hachageTransactionChiffrage = await this.rabbitMQ.pki.hacherTransaction(transactionChiffrage)
+//       const hachageTransactionFichier = await this.rabbitMQ.pki.hacherTransaction(transactionFichier)
+//
+//       const hachageTransactionChiffrageEntete = transactionChiffrage['en-tete']['hachage_contenu']
+//       const hachageTransactionFichierEntete = transactionFichier['en-tete']['hachage_contenu']
+//
+//       debug("Hachage transaction chiffrage calcule : %O\nHachage chiffrage fichier entete : %O",
+//         hachageTransactionChiffrage, hachageTransactionChiffrageEntete)
+//       debug("Hachage transaction fichier calcule : %O\nHachage transaction fichier entete : %O",
+//         hachageTransactionFichier, hachageTransactionFichierEntete)
+//
+//       const hachageValideChiffrage = hachageTransactionChiffrage === hachageTransactionChiffrageEntete
+//       const hachageValideFichier = hachageTransactionFichier === hachageTransactionFichierEntete
+//
+//       if( ! (transactionValideFichier && transactionValideChiffrage && hachageValideChiffrage && hachageValideFichier) ) {
+//         throw new Error(`Erreur validation transactions. Fichier signature:${transactionValideFichier}/hachage:${hachageValideFichier}. Chiffrage signature:${transactionValideChiffrage}/hachage:${hachageValideChiffrage}`)
+//       }
+//
+//       // console.debug(headers);
+//       const fuuid = transactionFichier.fuuid
+//       const encrypte = transactionFichier.securite === '3.protege'
+//       const extension = path.parse(transactionFichier.nom_fichier).ext.replace('.', '')
+//       const mimetype = transactionFichier.mimetype
+//
+//       let nouveauPathFichier = pathConsignation.trouverPathLocal(fuuid, encrypte, {extension, mimetype});
+//
+//       // Creer le repertoire au besoin, puis deplacer le fichier (rename)
+//       const hachage = await calculHachage(req, transactionFichier.hachage)
+//
+//       // Transmettre les transactions et deplacer le fichier
+//       await deplacerFichier(req, nouveauPathFichier)
+//       debug("Transmettre transaction chiffrage")
+//       await this.rabbitMQ.transmettreEnveloppeCommande(transactionChiffrage)
+//       debug("Transmettre transaction fichier")
+//       await this.rabbitMQ.transmettreEnveloppeTransaction(transactionFichier)
+//
+//       return({hachage})
+//     } finally {
+//       // Cleanup fichier upload
+//       const fichierPath = req.file.path
+//       fs.unlink(fichierPath, err=>{
+//         if(err) console.error("Erreur unlink sous multer " + fichierPath)
+//       })
+//     }
+//   }
+//
+// }
 
 async function supprimerFichiers(fichiers, repertoire, opts) {
   opts = opts || {}
@@ -294,34 +294,34 @@ async function supprimerFichiers(fichiers, repertoire, opts) {
 //   if(errResultatNettoyage) throw errResultatNettoyage;
 // }
 
-async function calculHachage(req, hachage) {
-  return new Promise((resolve, reject)=>{
-    // Deplacer le fichier
-    const fichier = req.file
-
-    const fichierReadStream = fs.createReadStream(fichier.path)
-    const digester = crypto.createHash('sha512');
-
-    fichierReadStream.on('data', data=>{
-      debug("DATA ! %d", data.length)
-      digester.update(data)
-    })
-
-    fichierReadStream.on('end', data=>{
-      if(data) {
-        digester.update(data)
-      }
-      const digest = 'sha512_b64:' + digester.digest('base64')
-      debug("Digest calcule sur fichier %s", digest)
-
-      // Verifier que le digest calcule correspond a celui recu
-      if(digest !== hachage) {
-        return reject(new Error(`Hachage fichier invalide pour fuuid : ${fichier.path}\n${digest}\n${hachage}`))
-      }
-      resolve(digest)
-    })
-  })
-}
+// async function calculHachage(req, hachage) {
+//   return new Promise((resolve, reject)=>{
+//     // Deplacer le fichier
+//     const fichier = req.file
+//
+//     const fichierReadStream = fs.createReadStream(fichier.path)
+//     const digester = crypto.createHash('sha512');
+//
+//     fichierReadStream.on('data', data=>{
+//       debug("DATA ! %d", data.length)
+//       digester.update(data)
+//     })
+//
+//     fichierReadStream.on('end', data=>{
+//       if(data) {
+//         digester.update(data)
+//       }
+//       const digest = 'sha512_b64:' + digester.digest('base64')
+//       debug("Digest calcule sur fichier %s", digest)
+//
+//       // Verifier que le digest calcule correspond a celui recu
+//       if(digest !== hachage) {
+//         return reject(new Error(`Hachage fichier invalide pour fuuid : ${fichier.path}\n${digest}\n${hachage}`))
+//       }
+//       resolve(digest)
+//     })
+//   })
+// }
 
 async function deplacerFichier(req, nouveauPathFichier) {
   const fichier = req.file

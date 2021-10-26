@@ -10,13 +10,6 @@ const { creerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrill
 const AES_ALGORITHM = 'aes-256-cbc';  // Meme algorithme utilise sur MG en Python
 const RSA_ALGORITHM = 'RSA-OAEP';
 
-function decrypter(sourceCryptee, destination, cleSecreteDecryptee, iv, opts) {
-  if(!opts) opts = {}
-
-  let cryptoStream = getDecipherPipe4fuuid(cleSecreteDecryptee, iv, opts)
-  return _decrypter(sourceCryptee, destination, cryptoStream, opts)
-}
-
 function decrypterGCM(sourceCryptee, destination, cleSecreteDecryptee, iv, tag, opts) {
   if(!opts) opts = {}
   const params = {sourceCryptee, destination, cleSecreteDecryptee, iv, tag, opts}
@@ -137,7 +130,7 @@ function getDecipherPipe4fuuid(cleSecrete, iv, opts) {
     decipher = crypto.createDecipheriv('aes-256-gcm', decryptedSecretKey, ivBuffer)
     decipher.setAuthTag(bufferTag)
   } else {
-    decipher = crypto.createDecipheriv('aes-256-cbc', decryptedSecretKey, ivBuffer)
+    throw new Error("Format chiffrage non supporte")
   }
 
   decipher.pipe(transformStream)
@@ -147,86 +140,86 @@ function getDecipherPipe4fuuid(cleSecrete, iv, opts) {
   return {reader: decipher, writer: transformStream}
 }
 
-function decrypterSymmetrique(contenuCrypte, cleSecrete, iv) {
-  return new Promise((resolve, reject)=>{
+// function decrypterSymmetrique(contenuCrypte, cleSecrete, iv) {
+//   return new Promise((resolve, reject)=>{
+//
+//     // Dechiffrage avec node-forge
+//     let cleSecreteBuffer = forge.util.decode64(cleSecrete.toString('base64'));
+//     let ivBuffer = forge.util.decode64(iv);
+//
+//     var decipher = forge.cipher.createDecipher('AES-CBC', cleSecreteBuffer);
+//     decipher.start({iv: ivBuffer});
+//     let bufferContenu = forge.util.createBuffer(forge.util.decode64(contenuCrypte));
+//     decipher.update(bufferContenu);
+//     var result = decipher.finish(); // check 'result' for true/false
+//
+//     if(!result) {
+//       reject("Erreur dechiffrage");
+//     }
+//     let output = decipher.output;
+//     contenuDecrypteString = output.data.toString('utf8');
+//
+//     // Enlever 16 bytes pour IV
+//     contenuDecrypteString = contenuDecrypteString.slice(16);
+//
+//     resolve(contenuDecrypteString)
+//   })
+// }
 
-    // Dechiffrage avec node-forge
-    let cleSecreteBuffer = forge.util.decode64(cleSecrete.toString('base64'));
-    let ivBuffer = forge.util.decode64(iv);
+// async function chargerCleDechiffrage(mq, hachage_bytes) {
+//   const liste_hachage_bytes = [hachage_bytes]
+//
+//   // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
+//   const domaine = 'MaitreDesCles', action = 'dechiffrage'
+//   const requete = {liste_hachage_bytes}
+//   debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
+//   const reponseCle = await mq.transmettreRequete(domaine, requete, {action, ajouterCertificat: true})
+//   if(!reponseCle.cle) {
+//     return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${message.fuuid}`}
+//   }
+//   debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
+//
+//   // Dechiffrer cle recue
+//   const informationCle = reponseCle.cles[hachage_bytes]
+//   const cleChiffree = informationCle.cle
+//   const cleDechiffree = await mq.pki.decrypterAsymetrique(cleChiffree)
+//
+//   // Demander cles publiques pour chiffrer video transcode
+//   const domaineActionClesPubliques = 'MaitreDesCles.certMaitreDesCles'
+//   const reponseClesPubliques = await mq.transmettreRequete(domaineActionClesPubliques, {})
+//   const clesPubliques = [reponseClesPubliques.certificat, [mq.pki.ca]]
+//
+//   // opts = {cleSymmetrique: cleDechiffree, iv: informationCle.iv, clesPubliques}
+//   return {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
+// }
 
-    var decipher = forge.cipher.createDecipher('AES-CBC', cleSecreteBuffer);
-    decipher.start({iv: ivBuffer});
-    let bufferContenu = forge.util.createBuffer(forge.util.decode64(contenuCrypte));
-    decipher.update(bufferContenu);
-    var result = decipher.finish(); // check 'result' for true/false
-
-    if(!result) {
-      reject("Erreur dechiffrage");
-    }
-    let output = decipher.output;
-    contenuDecrypteString = output.data.toString('utf8');
-
-    // Enlever 16 bytes pour IV
-    contenuDecrypteString = contenuDecrypteString.slice(16);
-
-    resolve(contenuDecrypteString)
-  })
-}
-
-async function chargerCleDechiffrage(mq, hachage_bytes) {
-  const liste_hachage_bytes = [hachage_bytes]
-
-  // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
-  const domaine = 'MaitreDesCles', action = 'dechiffrage'
-  const requete = {liste_hachage_bytes}
-  debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
-  const reponseCle = await mq.transmettreRequete(domaine, requete, {action, ajouterCertificat: true})
-  if(!reponseCle.cle) {
-    return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${message.fuuid}`}
-  }
-  debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
-
-  // Dechiffrer cle recue
-  const informationCle = reponseCle.cles[hachage_bytes]
-  const cleChiffree = informationCle.cle
-  const cleDechiffree = await mq.pki.decrypterAsymetrique(cleChiffree)
-
-  // Demander cles publiques pour chiffrer video transcode
-  const domaineActionClesPubliques = 'MaitreDesCles.certMaitreDesCles'
-  const reponseClesPubliques = await mq.transmettreRequete(domaineActionClesPubliques, {})
-  const clesPubliques = [reponseClesPubliques.certificat, [mq.pki.ca]]
-
-  // opts = {cleSymmetrique: cleDechiffree, iv: informationCle.iv, clesPubliques}
-  return {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
-}
-
-async function chargerCleDechiffragePermission(mq, hachage_bytes, permission) {
-  const liste_hachage_bytes = [hachage_bytes]
-
-  // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
-  const domaine = 'MaitreDesCles', action = 'dechiffrage'
-  const requete = {liste_hachage_bytes, permission}
-  debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
-  const reponseCle = await mq.transmettreRequete(domaine, requete, {action, ajouterCertificat: true})
-  if(reponseCle.code !== 1) {
-    debug("chargerCleDechiffragePermission Erreur demande cle dechiffrage : %O", reponseCle)
-    return {err: reponseCle.err, msg: `Erreur dechiffrage cle de ${hachage_bytes}`}
-  }
-  debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
-
-  // Dechiffrer cle recue
-  const informationCle = reponseCle.cles[hachage_bytes]
-  const cleChiffree = informationCle.cle
-  const cleDechiffree = await mq.pki.decrypterAsymetrique(cleChiffree)
-
-  // Demander cles publiques pour chiffrer video transcode
-  const actionRequeteCerts = 'certMaitreDesCles'
-  const reponseClesPubliques = await mq.transmettreRequete(domaine, {}, {action: actionRequeteCerts})
-  const clesPubliques = [reponseClesPubliques.certificat, [mq.pki.ca]]
-
-  // opts = {cleSymmetrique: cleDechiffree, iv: informationCle.iv, clesPubliques}
-  return {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
-}
+// async function chargerCleDechiffragePermission(mq, hachage_bytes, permission) {
+//   const liste_hachage_bytes = [hachage_bytes]
+//
+//   // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
+//   const domaine = 'MaitreDesCles', action = 'dechiffrage'
+//   const requete = {liste_hachage_bytes, permission}
+//   debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
+//   const reponseCle = await mq.transmettreRequete(domaine, requete, {action, ajouterCertificat: true})
+//   if(reponseCle.code !== 1) {
+//     debug("chargerCleDechiffragePermission Erreur demande cle dechiffrage : %O", reponseCle)
+//     return {err: reponseCle.err, msg: `Erreur dechiffrage cle de ${hachage_bytes}`}
+//   }
+//   debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
+//
+//   // Dechiffrer cle recue
+//   const informationCle = reponseCle.cles[hachage_bytes]
+//   const cleChiffree = informationCle.cle
+//   const cleDechiffree = await mq.pki.decrypterAsymetrique(cleChiffree)
+//
+//   // Demander cles publiques pour chiffrer video transcode
+//   const actionRequeteCerts = 'certMaitreDesCles'
+//   const reponseClesPubliques = await mq.transmettreRequete(domaine, {}, {action: actionRequeteCerts})
+//   const clesPubliques = [reponseClesPubliques.certificat, [mq.pki.ca]]
+//
+//   // opts = {cleSymmetrique: cleDechiffree, iv: informationCle.iv, clesPubliques}
+//   return {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
+// }
 
 async function creerOutputstreamChiffrage(certificatsPem, identificateurs_document, domaine, opts) {
   opts = opts || {}
@@ -260,15 +253,60 @@ async function creerOutputstreamChiffrage(certificatsPem, identificateurs_docume
   return transformStream
 }
 
-async function getCertificatsChiffrage(mq) {
-  const domaineActionClesPubliques = 'MaitreDesCles.certMaitreDesCles'
-  const reponseClesPubliques = await mq.transmettreRequete(domaineActionClesPubliques, {})
-  const clesPubliques = [reponseClesPubliques.certificat, [reponseClesPubliques.certificat_millegrille]]
-  return clesPubliques
+// async function getCertificatsChiffrage(mq) {
+//   const domaineActionClesPubliques = 'MaitreDesCles.certMaitreDesCles'
+//   const reponseClesPubliques = await mq.transmettreRequete(domaineActionClesPubliques, {})
+//   const clesPubliques = [reponseClesPubliques.certificat, [reponseClesPubliques.certificat_millegrille]]
+//   return clesPubliques
+// }
+
+async function chiffrerMemoire(mq, fichierSrc, clesPubliques, opts) {
+  opts = opts || {}
+
+  const identificateurs_document = opts.identificateurs_document || {}
+
+  // Creer cipher
+  debug("Cles publiques pour cipher : %O", clesPubliques)
+  const cipher = await mq.pki.creerCipherChiffrageAsymmetrique(
+    clesPubliques, 'GrosFichiers', identificateurs_document
+  )
+
+  return new Promise((resolve, reject)=>{
+    const s = fs.ReadStream(fichierSrc)
+    var tailleFichier = 0
+    var buffer = [];
+    s.on('data', data => {
+      const contenuCrypte = cipher.update(data);
+      tailleFichier += contenuCrypte.length
+      // writeStream.write(contenuCrypte)
+      buffer = [...buffer, ...contenuCrypte]
+    })
+    s.on('end', async _ => {
+      const informationChiffrage = await cipher.finish()
+
+      if(opts.base64 === true) {
+        // Convertir les bytes en base64
+        buffer = String.fromCharCode.apply(null, multibase.encode('base64', buffer))
+      }
+
+      debug("Information chiffrage fichier : %O", informationChiffrage)
+      return resolve({
+        tailleFichier,
+        data: buffer,
+        meta: informationChiffrage.meta,
+        commandeMaitreCles: informationChiffrage.commandeMaitreCles
+      })
+    })
+  })
+
 }
 
 module.exports = {
-  decrypter, getDecipherPipe4fuuid, decrypterSymmetrique, decrypterGCM,
-  gcmStreamReaderFactory, chargerCleDechiffrage, chargerCleDechiffragePermission, creerOutputstreamChiffrage,
-  getCertificatsChiffrage,
+  //decrypter, decrypterSymmetrique,
+  getDecipherPipe4fuuid, decrypterGCM,
+  gcmStreamReaderFactory,
+  // chargerCleDechiffrage, chargerCleDechiffragePermission,
+  creerOutputstreamChiffrage,
+  // getCertificatsChiffrage,
+  chiffrerMemoire,
 }

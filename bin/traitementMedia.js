@@ -15,10 +15,10 @@ const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.common/lib/mimetype_ext.
 
 const { calculerHachageFichier } = require('./utilitairesHachage')
 
-function genererPreviewImage(mq, pathConsignation, message, opts) {
+function genererPreviewImage(mq, fichierDechiffre, message, opts) {
   if(!opts) opts = {}
   const fctConversion = traiterImage
-  return _genererPreview(mq, pathConsignation, message, opts, fctConversion)
+  return _genererPreview(mq, fichierDechiffre, message, opts, fctConversion)
 }
 
 function genererPreviewVideo(mq, pathConsignation, message, opts) {
@@ -27,99 +27,104 @@ function genererPreviewVideo(mq, pathConsignation, message, opts) {
   return _genererPreview(mq, pathConsignation, message, opts, fctConversion)
 }
 
-async function _genererPreview(mq, pathConsignation, message, opts, fctConversion) {
+async function _genererPreview(mq, fichierDechiffre, message, opts, fctConversion) {
 
   const uuidDocument = message.tuuid,
         fuuid = message.fuuid,
         mimetype = message.mimetype
 
   // Determiner extension fichier original en fonction du mimetype
-  const extension = MIMETYPE_EXT_MAP[mimetype] || '.mov'
+  // const extension = MIMETYPE_EXT_MAP[mimetype] || '.mov'
 
-  debug("Message genererPreviewImage uuid:%s/fuuid:%s, chiffre:%s", uuidDocument, fuuid, opts.iv?true:false);
+  debug("Message genererPreviewImage tuuid:%s/fuuid:%s, chiffre:%s", uuidDocument, fuuid);
   // debug("Parametres dechiffrage : %O", opts)
 
-  var fichierSource = null, fichierDestination = null,
-      fichierSrcTmp = null, fichierDstTmp = null,
-      pathPreviewImageTmp = null
-  try {
+  var fichierDstTmp = null
+      // fichierSource = null,
+      // fichierDestination = null,
+      // fichierSrcTmp = null,
+      // pathPreviewImageTmp = null
+  // try {
 
     // Trouver fichier original crypte    const pathFichierChiffre = this.pathConsignation.trouverPathLocal(fuuid, true);
-    fichierSrcTmp = await dechiffrerTemporaire(pathConsignation, fuuid, extension, opts.cleSymmetrique, opts.metaCle)
-    fichierSource = fichierSrcTmp.path
+    // fichierSrcTmp = await dechiffrerTemporaire(pathConsignation, fuuid, extension, opts.cleSymmetrique, opts.metaCle)
+    // fichierSource = fichierSrcTmp.path
 
-    debug("Fichier (dechiffre) %s pour generer preview image", fichierSource)
+    debug("Fichier (dechiffre) %s pour generer preview image", fichierDechiffre)
     var resultatConversion = await fctConversion(
-      fichierSource, {...opts, mq, chiffrerTemporaire, deplacerVersStorage: _deplacerVersStorage, pathConsignation, fuuid})
+      fichierDechiffre, {...opts, mq,
+        // chiffrerTemporaire, deplacerVersStorage: _deplacerVersStorage, pathConsignation,
+        // fuuid
+      })
     debug("Resultat conversion : %O", resultatConversion)
 
     return resultatConversion
 
-  } finally {
-    // Effacer le fichier temporaire
-    const fichiersTmp = [fichierSrcTmp, fichierDstTmp, pathPreviewImageTmp]
-    fichiersTmp.forEach(item=>{
-      try {
-        if(item) {
-          debug("Nettoyage fichier tmp %s", item.path)
-          item.cleanup()
-        }
-      } catch(err) {
-        console.error("Erreur suppression fichier temp %s: %O", item.path, err)
-      }
-    })
-  }
+  // } finally {
+  //   // Effacer le fichier temporaire
+  //   const fichiersTmp = [fichierSrcTmp, fichierDstTmp, pathPreviewImageTmp]
+  //   fichiersTmp.forEach(item=>{
+  //     try {
+  //       if(item) {
+  //         debug("Nettoyage fichier tmp %s", item.path)
+  //         item.cleanup()
+  //       }
+  //     } catch(err) {
+  //       console.error("Erreur suppression fichier temp %s: %O", item.path, err)
+  //     }
+  //   })
+  // }
 
 }
 
-async function dechiffrerTemporaire(pathConsignation, fuuid, extension, cleSymmetrique, metaCle, opts) {
-  opts = opts || {}
-
-  const pathFichierChiffre = pathConsignation.trouverPathLocal(fuuid, true);
-
-  const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
-  const decryptedPath = tmpDecrypted.path
-
-  // Decrypter
-  await decrypterGCM(pathFichierChiffre, decryptedPath, cleSymmetrique, metaCle.iv, metaCle.tag, opts)
-
-  return tmpDecrypted
-}
-
-async function chiffrerTemporaire(mq, fichierSrc, fichierDst, clesPubliques, opts) {
-  opts = opts || {}
-
-  const writeStream = fs.createWriteStream(fichierDst);
-
-  const identificateurs_document = opts.identificateurs_document || {}
-
-  // Creer cipher
-  debug("Cles publiques pour cipher : %O", clesPubliques)
-  const cipher = await mq.pki.creerCipherChiffrageAsymmetrique(
-    clesPubliques, 'GrosFichiers', identificateurs_document
-  )
-
-  return new Promise((resolve, reject)=>{
-    const s = fs.ReadStream(fichierSrc)
-    var tailleFichier = 0
-    s.on('data', data => {
-      const contenuCrypte = cipher.update(data);
-      tailleFichier += contenuCrypte.length
-      writeStream.write(contenuCrypte)
-    })
-    s.on('end', async _ => {
-      const informationChiffrage = await cipher.finish()
-      console.debug("Information chiffrage fichier : %O", informationChiffrage)
-      writeStream.close()
-      return resolve({
-        tailleFichier,
-        meta: informationChiffrage.meta,
-        commandeMaitreCles: informationChiffrage.commandeMaitreCles
-      })
-    })
-  })
-
-}
+// async function dechiffrerTemporaire(pathConsignation, fuuid, extension, cleSymmetrique, metaCle, opts) {
+//   opts = opts || {}
+//
+//   const pathFichierChiffre = pathConsignation.trouverPathLocal(fuuid, true);
+//
+//   const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
+//   const decryptedPath = tmpDecrypted.path
+//
+//   // Decrypter
+//   await decrypterGCM(pathFichierChiffre, decryptedPath, cleSymmetrique, metaCle.iv, metaCle.tag, opts)
+//
+//   return tmpDecrypted
+// }
+//
+// async function chiffrerTemporaire(mq, fichierSrc, fichierDst, clesPubliques, opts) {
+//   opts = opts || {}
+//
+//   const writeStream = fs.createWriteStream(fichierDst);
+//
+//   const identificateurs_document = opts.identificateurs_document || {}
+//
+//   // Creer cipher
+//   debug("Cles publiques pour cipher : %O", clesPubliques)
+//   const cipher = await mq.pki.creerCipherChiffrageAsymmetrique(
+//     clesPubliques, 'GrosFichiers', identificateurs_document
+//   )
+//
+//   return new Promise((resolve, reject)=>{
+//     const s = fs.ReadStream(fichierSrc)
+//     var tailleFichier = 0
+//     s.on('data', data => {
+//       const contenuCrypte = cipher.update(data);
+//       tailleFichier += contenuCrypte.length
+//       writeStream.write(contenuCrypte)
+//     })
+//     s.on('end', async _ => {
+//       const informationChiffrage = await cipher.finish()
+//       console.debug("Information chiffrage fichier : %O", informationChiffrage)
+//       writeStream.close()
+//       return resolve({
+//         tailleFichier,
+//         meta: informationChiffrage.meta,
+//         commandeMaitreCles: informationChiffrage.commandeMaitreCles
+//       })
+//     })
+//   })
+//
+// }
 
 async function transcoderVideo(mq, pathConsignation, message, opts) {
   opts = opts || {}
@@ -280,30 +285,30 @@ async function indexerDocument(mq, pathConsignation, message, optsConversion) {
   }
 }
 
-async function _deplacerVersStorage(pathConsignation, resultatChiffrage, pathPreviewImageTmp) {
-  const hachage = resultatChiffrage.meta.hachage_bytes
-  const pathPreviewImage = pathConsignation.trouverPathLocal(hachage)
-
-  // Makedir consignation
-  const pathRepertoire = path.dirname(pathPreviewImage)
-  await new Promise((resolve, reject) => {
-    fs.mkdir(pathRepertoire, { recursive: true }, async (err)=>{
-      if(err) return reject(err)
-      resolve()
-    })
-  })
-
-  // Changer extension fichier destination
-  debug("Renommer fichier dest pour ajouter extension : %s", pathPreviewImage)
-  try {
-    await fsPromises.rename(pathPreviewImageTmp.path, pathPreviewImage)
-  } catch(err) {
-    console.warn("WARN traitementMedia._deplacerVersStorage: move (rename) echec, on fait copy")
-    await fsPromises.copyFile(pathPreviewImageTmp.path, pathPreviewImage)
-    await fsPromises.unlink(pathPreviewImageTmp.path)
-  }
-}
+// async function _deplacerVersStorage(pathConsignation, resultatChiffrage, pathPreviewImageTmp) {
+//   const hachage = resultatChiffrage.meta.hachage_bytes
+//   const pathPreviewImage = pathConsignation.trouverPathLocal(hachage)
+//
+//   // Makedir consignation
+//   const pathRepertoire = path.dirname(pathPreviewImage)
+//   await new Promise((resolve, reject) => {
+//     fs.mkdir(pathRepertoire, { recursive: true }, async (err)=>{
+//       if(err) return reject(err)
+//       resolve()
+//     })
+//   })
+//
+//   // Changer extension fichier destination
+//   debug("Renommer fichier dest pour ajouter extension : %s", pathPreviewImage)
+//   try {
+//     await fsPromises.rename(pathPreviewImageTmp.path, pathPreviewImage)
+//   } catch(err) {
+//     console.warn("WARN traitementMedia._deplacerVersStorage: move (rename) echec, on fait copy")
+//     await fsPromises.copyFile(pathPreviewImageTmp.path, pathPreviewImage)
+//     await fsPromises.unlink(pathPreviewImageTmp.path)
+//   }
+// }
 
 module.exports = {
-  genererPreviewImage, genererPreviewVideo, transcoderVideo, dechiffrerTemporaire, indexerDocument,
+  genererPreviewImage, genererPreviewVideo, transcoderVideo, indexerDocument,
 }
