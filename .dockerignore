@@ -9,3 +9,5 @@ image_info.txt
 *.sh
 nodejsmedia/
 node_modules/
+.env
+.env.local

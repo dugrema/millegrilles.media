@@ -128,14 +128,13 @@ async function convertir(
           try {
             fichierTmp.cleanup()  // Supprimer fichier tmp non chiffre
           } catch(err) {console.error("ERROR transfomationImages.convertir fichierTmp %O", err)}
-          continue  // Abandonner conversion
         }
       } else {
         try {
           fichierTmp.cleanup()  // Supprimer fichier tmp non chiffre
         } catch(err) {console.error("ERROR transfomationImages.convertir fichierTmp %O", err)}
-        continue  // Abandonner conversion
       }
+      throw err  // Abandonner conversion
     }
 
     // Creer promise pour continuer le traitement de chiffrage
