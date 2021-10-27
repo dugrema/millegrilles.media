@@ -95,10 +95,11 @@ async function genererPreviewImage(message) {
   const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
     hachageFichier, mimetype, cleFichier)
 
+  const {clesPubliques} = cleFichier
+  var resultatConversion = null
   try {
     debug("Debut generation preview %O", message)
-    const {clesPubliques} = cleFichier
-    const resultatConversion = await traitementMedia.genererPreviewImage(
+    resultatConversion = await traitementMedia.genererPreviewImage(
       _mq, fichierDechiffre, message, {clesPubliques, fuuid: hachageFichier})
     debug("Fin traitement thumbnails/posters, resultat : %O", resultatConversion)
   } finally {
@@ -112,7 +113,7 @@ async function genererPreviewImage(message) {
   const transactionAssocier = {
     tuuid: message.tuuid,
     fuuid: hachageFichier,  // message.fuuid,
-    images,
+    // images,
     width: metadataImage.width,
     height: metadataImage.height,
     mimetype: metadataImage['mime type'],
