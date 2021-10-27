@@ -397,35 +397,17 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`, {exchange: '2.prive'})
 
-    // const cleInfo = await chargerCleDechiffragePermission(mq, fuuid, message)
-    // debug("Cle dechiffrage : %O", cleInfo)
-
-    const progressCb = progress => {
-      progressUpdate(mq, {fuuid, mimetype, videoBitrate, height}, progress)
-    }
+    // Fonction de progres
+    const progressCb = progress => { progressUpdate(mq, {fuuid, mimetype, videoBitrate, height}, progress) }
 
     // Creer un factory d'input streams decipher
-    // const pathFichierChiffre = pathConsignation.trouverPathLocal(fuuid, true);
-    // const inputStreamFactory = gcmStreamReaderFactory(
-    //   pathFichierChiffre,
-    //   cleInfo.cleSymmetrique,
-    //   cleInfo.metaCle.iv,
-    //   cleInfo.metaCle.tag
-    // )
-    const inputStreamFactory = () => {
-      return fs.createReadStream(fichierDechiffre)
-    }
-
-    // Recuperer certificats de chiffrage (maitre des cles, millegrille)
-    // const certificatsPem = cleInfo.clesPubliques.map(item=>item[0])
+    const inputStreamFactory = () => { return fs.createReadStream(fichierDechiffre) }
 
     // Transmettre transaction info chiffrage
     const identificateurs_document = {
         attachement_fuuid: fuuid,
         type: 'video',
       }
-    //const domaine = 'GrosFichiers'
-    //const cipherOutputStream = await creerOutputstreamChiffrage(certificatsPem, identificateurs_document, domaine, {})
 
     const opts = {...profil, progressCb}
     debug("Debut dechiffrage fichier video, opts : %O", opts)
@@ -433,37 +415,16 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     let resultatTranscodage = null, resultatUpload = null
     try {
       const outputStream = fs.createWriteStream(fichierOutputTmp.path)
-      // cipherOutputStream.pipe(outputStream)
       resultatTranscodage = await transcoderVideo(inputStreamFactory, outputStream, opts)
-
       debug("Resultat transcodage : %O", resultatTranscodage)
-
       resultatUpload = await uploaderFichierTraite(mq, fichierOutputTmp.path, clesPubliques, identificateurs_document)
-
-      // // Deplacer le fichier temporaire vers path consignation
-      // const fuuidOutput = cipherOutputStream.commandeMaitredescles.hachage_bytes
-      // const pathLocalOutput = pathConsignation.trouverPathLocal(fuuidOutput)
-      // await fsPromises.mkdir(path.dirname(pathLocalOutput), {recursive: true})
-      // debug("Deplacer output transcodage vers %s", pathLocalOutput)
-      // try {
-      //   await fsPromises.rename(fichierOutputTmp.path, pathLocalOutput)
-      // } catch(err) {
-      //   console.warn("WARN - transformationsVideo.traiterCommandeTranscodage: Echec deplacement fichier output via rename, on copie")
-      //   await fsPromises.copyFile(fichierOutputTmp.path, pathLocalOutput)
-      //   await fsPromises.unlink(fichierOutputTmp.path)
-      // }
-    } catch(err) {
-      // Cleanup fichier temporaire cas d'erreur
+    } finally {
       fichierOutputTmp.cleanup().catch(err=>{debug("Err cleanup fichier video tmp (OK) : %O", err)})
-      throw err
     }
 
     debug("Resultat transcodage : %O\nResultat upload: %O", resultatTranscodage, resultatUpload)
 
     const probeInfo = resultatTranscodage.probe
-
-    // const commandeMaitredescles = cipherOutputStream.commandeMaitredescles
-    // debug("Resultat transcodage = %O\ncommandeMaitredescles = %O", resultatTranscodage, commandeMaitredescles)
 
     // Transmettre transaction associer video transcode
     const transactionAssocierPreview = {
@@ -483,13 +444,6 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     debug("Transaction transcoder video : %O", transactionAssocierPreview)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`, {exchange: '2.prive'})
-
-    // // Transmettre commande maitre des cles
-    // const domaineCle = 'MaitreDesCles',
-    //       actionCle = 'sauvegarderCle',
-    //       partitionCle = commandeMaitredescles['_partition']
-    // delete commandeMaitredescles['_partition']
-    // await mq.transmettreCommande(domaineCle, commandeMaitredescles, {action: actionCle, partition: partitionCle, ajouterCertificat: true})
 
     // Transmettre transaction pour associer le video au fuuid
     const domainePreview = 'GrosFichiers', actionPreview = 'associerVideo'
