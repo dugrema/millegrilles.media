@@ -132,41 +132,6 @@ async function genererPreviewImage(message) {
       console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
     })
 
-
-  // // Extraire information d'images converties sous un dict
-  // let resultatPreview = null  // Utiliser poster (legacy)
-  // const images = {}
-  // const identificateurs_document = {type: 'image', fuuid_reference: hachageFichier}
-  // for(let idx in conversions) {
-  //   const conversion = conversions[idx]
-  //   const resultat = {...conversion.informationImage}
-  //   const cle = conversion.cle
-  //   images[cle] = resultat
-  //
-  //   if(conversion.fichierTmp) {
-  //     // Chiffrer et uploader le fichier tmp
-  //     const {hachage, taille} = await transfertConsignation.uploaderFichierTraite(
-  //       _mq, conversion.fichierTmp, clesPubliques, identificateurs_document)
-  //     // Ajouter nouveau hachage (fuuid fichier converti)
-  //     resultat.hachage = hachage
-  //     resultat.taille = taille
-  //   }
-  //   if (conversion.commandeMaitreCles) {
-  //     // Emettre la commande de maitre des cles
-  //     const commandeMaitreCles = conversion.commandeMaitreCles
-  //     const partition = commandeMaitreCles._partition
-  //     delete commandeMaitreCles._partition
-  //     await _mq.transmettreCommande(DOMAINE_MAITREDESCLES, commandeMaitreCles, {action: ACTION_SAUVEGARDERCLE, partition})
-  //   }
-  //
-  // }
-  //
-  // debug("Transaction associer images converties : %O", transactionAssocier)
-  // _mq.transmettreTransactionFormattee(
-  //   transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true}
-  // ).catch(err=>{
-  //     console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
-  //   })
 }
 
 async function traiterConversions(fuuid, conversions, clesPubliques) {
@@ -260,14 +225,6 @@ async function genererPreviewVideo(message) {
   let resultatPreview = null  // Utiliser poster (legacy)
   const images = await traiterConversions(hachageFichier, conversions, clesPubliques)
   transactionAssocier.images = images
-
-  // for(let idx in conversions) {
-  //   const conversion = conversions[idx]
-  //   const resultat = {...conversion.informationImage}
-  //   const cle = resultat.cle
-  //   delete resultat.cle
-  //   images[cle] = resultat
-  // }
 
   debug("Transaction associer images converties : %O", transactionAssocier)
 
