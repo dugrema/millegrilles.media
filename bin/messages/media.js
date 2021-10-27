@@ -279,7 +279,7 @@ async function genererPreviewVideo(message) {
     })
 }
 
-function _traiterCommandeTranscodage(mq, pathConsignation, message) {
+async function _traiterCommandeTranscodage(message) {
 
   // Verifier si la commande est expiree
   if(_mq.estExpire(message, {expiration: EXPIRATION_COMMANDE_TRANSCODAGE})) {
@@ -287,10 +287,35 @@ function _traiterCommandeTranscodage(mq, pathConsignation, message) {
     return
   }
 
-  return traiterCommandeTranscodage(mq, pathConsignation, message)
-    .catch(err=>{
-      console.error("media._traiterCommandeTranscodage ERROR %s: %O", message.fuuid, err)
-    })
+  debug("Traitement genererPreviewVideo : %O", message)
+
+  // Transmettre demande cle et attendre retour sur l'autre Q (on bloque Q operations longues)
+  const versionCourante = message.version_courante || {},
+        hachageFichier = message.fuuid || message.hachage || message.fuuid_v_courante || versionCourante.fuuid || versionCourante.hachage,
+        mimetype = message.mimetype
+  if(!hachageFichier) {
+    console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
+    return
+  }
+  const cleFichier = await recupererCle(hachageFichier, message)
+  const {cleDechiffree, informationCle, clesPubliques} = cleFichier
+
+  debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", hachageFichier, informationCle)
+
+  // Downloader et dechiffrer le fichier
+  const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+    hachageFichier, mimetype, cleFichier)
+
+  try {
+    debug("_traiterCommandeTranscodage fichier temporaire: %s", fichierDechiffre)
+
+    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, message)
+      .catch(err=>{
+        console.error("media._traiterCommandeTranscodage ERROR %s: %O", message.fuuid, err)
+      })
+  } finally {
+    if(cleanup) cleanup()
+  }
 }
 
 async function _indexerDocumentContenu(message) {
