@@ -62,8 +62,8 @@ function enregistrerChannel() {
     },
     ['commande.fichiers.indexerContenu'],
     {
-      operationLongue: true,
-      // qCustom: 'operationLongue',
+      // operationLongue: true,
+      qCustom: 'indexation',
     }
   )
 }

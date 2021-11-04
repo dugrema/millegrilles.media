@@ -33,6 +33,7 @@ async function init(opts) {
   const qCustom = {
     'image': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/image'},
     'video': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/video'},
+    'indexation': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation'},
   }
   const amqpdao = new MilleGrillesAmqpDAO(instPki, {qCustom})
   const mqConnectionUrl = process.env.MG_MQ_URL;

@@ -42,21 +42,16 @@ async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
   const decryptedPath = tmpDecrypted.path
   debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
 
-  try {
-    const reponseFichier = await axios({
-      method: 'GET',
-      url: url.href,
-      httpsAgent: _httpsAgent,
-      responseType: 'stream',
-      timeout: 7500,
-    })
+  const reponseFichier = await axios({
+    method: 'GET',
+    url: url.href,
+    httpsAgent: _httpsAgent,
+    responseType: 'stream',
+    timeout: 7500,
+  })
 
-    debug("Reponse download fichier : %O", reponseFichier.status)
-    await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
-  } catch(e) {
-    debug("Erreur download ou dechiffrage : %O", e)
-    console.error("Erreur traitement %s", hachage_bytes)
-  }
+  debug("Reponse download fichier : %O", reponseFichier.status)
+  await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
 
   return tmpDecrypted
 }
