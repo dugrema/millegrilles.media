@@ -319,6 +319,8 @@ async function _indexerDocumentContenu(message) {
 
 async function recupererCle(hachageFichier, permission) {
   const liste_hachage_bytes = [hachageFichier]
+  // Le message peut avoir une permission attachee
+  if(permission.permission) permission = permission.permission
 
   // Demander cles publiques pour rechiffrage
   const reponseClesPubliques = await _mq.transmettreRequete(

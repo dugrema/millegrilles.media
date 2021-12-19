@@ -1,13 +1,13 @@
 {
   "name": "millegrilles.media",
-  "version": "1.46.0",
+  "version": "1.47.0",
   "private": true,
   "scripts": {
     "start": "node ./bin/www",
     "test": "node ./node_modules/jest/bin/jest.js $1"
   },
   "dependencies": {
-    "@dugrema/millegrilles.common": "git+https://github.com/dugrema/millegrilles.common.nodejs.git#1.46",
+    "@dugrema/millegrilles.common": "git+https://github.com/dugrema/millegrilles.common.nodejs.git#1.47",
     "axios": "^0.23.0",
     "debug": "~4.3.2",
     "dotenv": "^10.0.0",
