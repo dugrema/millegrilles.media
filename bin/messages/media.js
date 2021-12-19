@@ -31,6 +31,33 @@ function on_connecter() {
 }
 
 function enregistrerChannel() {
+
+  // Exchanges 2.prive et 3.protege
+  ['2.prive', '3.protege'].map(exchange=>{
+    _mq.routingKeyManager.addRoutingKeyCallback(
+      (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
+      ['commande.fichiers.transcoderVideo'],
+      {
+        // operationLongue: true,
+        qCustom: 'video',
+        exchange,
+      }
+    )
+  })
+
+  // Exchange 3.protege (default) uniquement
+  _mq.routingKeyManager.addRoutingKeyCallback(
+    (routingKey, message)=>{
+      debug("indexerContenu : rk (%s) = %O", routingKey, message)
+      return _indexerDocumentContenu(message)
+    },
+    ['commande.fichiers.indexerContenu'],
+    {
+      // operationLongue: true,
+      qCustom: 'indexation',
+    }
+  )
+
   _mq.routingKeyManager.addRoutingKeyCallback(
     (routingKey, message)=>{return genererPreviewImage(message)},
     ['commande.fichiers.genererPosterImage'],
@@ -45,25 +72,6 @@ function enregistrerChannel() {
     {
       // operationLongue: true,
       qCustom: 'image',
-    }
-  )
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
-    ['commande.fichiers.transcoderVideo'],
-    {
-      // operationLongue: true,
-      qCustom: 'video',
-    }
-  )
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{
-      debug("indexerContenu : rk (%s) = %O", routingKey, message)
-      return _indexerDocumentContenu(message)
-    },
-    ['commande.fichiers.indexerContenu'],
-    {
-      // operationLongue: true,
-      qCustom: 'indexation',
     }
   )
 }
