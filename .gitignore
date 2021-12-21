@@ -3,3 +3,4 @@ node_modules
 ffmpeg*
 .local
 .env
+.env.local
