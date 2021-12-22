@@ -5,7 +5,8 @@ const https = require('https')
 const fs = require('fs')
 const tmp = require('tmp-promise')
 const {v4: uuidv4} = require('uuid')
-const FormData = require('form-data')
+// const FormData = require('form-data')
+const path = require('path')
 
 // const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.common/lib/mimetype_ext.json')
 const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
@@ -13,7 +14,8 @@ const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.
 const {getDecipherPipe4fuuid, creerOutputstreamChiffrage} = require('./cryptoUtils')
 
 const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
-      ACTION_SAUVEGARDERCLE = 'sauvegarderCle'
+      ACTION_SAUVEGARDERCLE = 'sauvegarderCle',
+      UPLOAD_TAILLE_BLOCK = 5 * 1024 * 1024  // 5 MB
 
 var _urlServeurConsignation = null,
     _httpsAgent = null
@@ -61,7 +63,7 @@ async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
 // Supprime les fichiers source et chiffres
 async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificateurs_document) {
   debug("Upload fichier traite : %s", pathFichier)
-  debug("CLES PUBLIQUES : %O", clesPubliques)
+  // debug("CLES PUBLIQUES : %O", clesPubliques)
   const pathStr = pathFichier.path || pathFichier
   const cleanup = pathFichier.cleanup
 
@@ -79,15 +81,60 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
     // const form = new FormData()
     // form.append("fichier", readStream, "fichier.jpg")
 
-    const reponsePut = await axios({
-      method: 'PUT',
-      httpsAgent: _httpsAgent,
-      url: url.href,
-      // headers: form.getHeaders(),
-      headers: {'content-type': 'application/stream'},
-      data: chiffrageStream,
+    let dataBuffer = [],
+        position = 0
+
+    await new Promise(async (resolve, reject)=>{
+
+      chiffrageStream.on('data', async data => {
+        dataBuffer = [...dataBuffer, ...data]
+
+        if(dataBuffer.length > UPLOAD_TAILLE_BLOCK) {
+          // Upload split
+          try {
+            chiffrageStream.pause()
+            while(dataBuffer.length > UPLOAD_TAILLE_BLOCK) {
+              const buffer = Uint8Array.from(dataBuffer.slice(0, UPLOAD_TAILLE_BLOCK))
+              // debug("UPLOAD DATA %s bytes position %s", buffer.length, position)
+              await putAxios(url, uuidCorrelation, position, buffer)
+              position += buffer.length
+              dataBuffer = dataBuffer.slice(UPLOAD_TAILLE_BLOCK)
+            }
+            chiffrageStream.resume()
+          } catch(err) {
+            chiffrageStream.destroy([err])
+            reject()
+          }
+        }
+      })
+
+      chiffrageStream.on('error', err => reject(err))
+
+      chiffrageStream.on('end', async () => {
+        try {
+          if(dataBuffer.length > 0) {
+            const buffer = Uint8Array.from(dataBuffer)
+            // debug("DATA BUFFER UPLOAD position %s Uint8 Array: %O", position, buffer)
+            await putAxios(url, uuidCorrelation, position, buffer)
+          }
+          resolve()
+        } catch(err) {
+          reject(err)
+        }
+      })
+
+      chiffrageStream.read()  // Lancer la lecture
+
+      // const reponsePut = await axios({
+      //   method: 'PUT',
+      //   httpsAgent: _httpsAgent,
+      //   url: url.href,
+      //   // headers: form.getHeaders(),
+      //   headers: {'content-type': 'application/stream'},
+      //   data: chiffrageStream,
+      // })
+      // debug("Reponse put : %s, commande maitre des cles: %O", reponsePut.status, chiffrageStream.commandeMaitredescles)
     })
-    debug("Reponse put : %s, commande maitre des cles: %O", reponsePut.status, chiffrageStream.commandeMaitredescles)
 
     // Emettre POST avec info maitredescles
     url.pathname = '/fichiers/' + uuidCorrelation
@@ -123,6 +170,24 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
     if(cleanup) cleanup()
   }
 
+}
+
+async function putAxios(url, uuidCorrelation, position, dataBuffer) {
+  // Emettre POST avec info maitredescles
+  const urlPosition = new URL(url.href)
+  urlPosition.pathname = path.join('/fichiers', uuidCorrelation, ''+position)
+
+  debug("putAxios url %s taille %s", urlPosition, dataBuffer.length)
+
+  const reponsePut = await axios({
+    method: 'PUT',
+    httpsAgent: _httpsAgent,
+    url: urlPosition.href,
+    headers: {'content-type': 'application/stream'},
+    data: dataBuffer,
+  })
+
+  debug("Reponse put %s : %s", urlPosition.href, reponsePut.status)
 }
 
 function dechiffrerStream(stream, cleFichier, pathDestination) {
