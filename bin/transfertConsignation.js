@@ -7,7 +7,8 @@ const tmp = require('tmp-promise')
 const {v4: uuidv4} = require('uuid')
 const FormData = require('form-data')
 
-const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.common/lib/mimetype_ext.json')
+// const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.common/lib/mimetype_ext.json')
+const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
 
 const {getDecipherPipe4fuuid, creerOutputstreamChiffrage} = require('./cryptoUtils')
 

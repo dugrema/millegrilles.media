@@ -1,19 +1,12 @@
 const debug = require('debug')('millegrilles:fichiers:traitementMedia')
 const tmp = require('tmp-promise')
-const {v1: uuidv1} = require('uuid')
 const path = require('path')
 const fs = require('fs')
 const fsPromises = require('fs/promises')
 const pdfParse = require('pdf-parse')
 const axios = require('axios')
 
-const { decrypterGCM } = require('./cryptoUtils.js')
-const { creerCipher, creerDecipher } = require('@dugrema/millegrilles.common/lib/chiffrage')
-const { hacher } = require('@dugrema/millegrilles.common/lib/hachage')
 const transformationImages = require('./transformationImages')
-const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.common/lib/mimetype_ext.json')
-
-const { calculerHachageFichier } = require('./utilitairesHachage')
 
 function genererPreviewImage(mq, fichierDechiffre, message, opts) {
   if(!opts) opts = {}

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@dugrema/millegrilles.common": "git+https://github.com/dugrema/millegrilles.common.nodejs.git#1.47",
+    "@dugrema/millegrilles.utiljs": "git+ssh://git.maceroc.com/git/millegrilles.utiljs#2021.1.0",
     "axios": "^0.23.0",
     "debug": "~4.3.2",
     "dotenv": "^10.0.0",

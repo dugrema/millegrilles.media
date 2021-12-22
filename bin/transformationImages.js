@@ -289,11 +289,15 @@ async function determinerConversionsImages(sourcePath) {
       params: ['-strip', '-resize', '128x128^', '-gravity', 'center', '-extent', '128x128', '-quality', '25']
     },
     // Poster, utilise pour afficher dans un coin d'ecran/preview
-    'poster': {
-      ext: 'jpg', resolution: 320,
-      params: ['-strip', '-resize', ratioInverse?'320x569>':'569x320>', '-quality', '60'],
-      paramsFallback: ['-strip', '-resize', '320x569', '-quality', '60'],
+    'small': {
+      ext: 'jpg', resolution: 200,
+      params: ['-strip', '-resize', '200x200^', '-gravity', 'center', '-extent', '200x200', '-quality', '80']
     },
+    // 'poster': {
+    //   ext: 'jpg', resolution: 320,
+    //   params: ['-strip', '-resize', ratioInverse?'320x569>':'569x320>', '-quality', '60'],
+    //   paramsFallback: ['-strip', '-resize', '320x569', '-quality', '60'],
+    // },
   }
 
   // Grandeur originale
@@ -315,9 +319,10 @@ async function determinerConversionsImages(sourcePath) {
     conversions['thumb'] = {ext: 'jpg', resolution: 128, params: ['-strip', '-resize', '128x128^', '-gravity', 'north', '-extent', '128x128', '-quality', '25']}
   } else {
     // Image standard
-    if(valRef >= 2160) {
-      conversions['image/webp;2160'] = {ext: 'webp', resolution: 2160, params: ['-strip', '-resize', ratioInverse?'2160x3840'+operationResize:'3840x2160'+operationResize, '-quality', quality]}
-    } else if(valRef >= 1440) {
+    // if(valRef >= 2160) {
+    //   conversions['image/webp;2160'] = {ext: 'webp', resolution: 2160, params: ['-strip', '-resize', ratioInverse?'2160x3840'+operationResize:'3840x2160'+operationResize, '-quality', quality]}
+    // } else 
+    if(valRef >= 1440) {
       conversions['image/webp;1440'] = {ext: 'webp', resolution: 1440, params: ['-strip', '-resize', ratioInverse?'1440x2560'+operationResize:'2560x1440'+operationResize, '-quality', quality]}
     } else if(valRef >= 1080) {
       conversions['image/webp;1080'] = {ext: 'webp', resolution: 1080, params: ['-strip', '-resize', ratioInverse?'1080x1920'+operationResize:'1920x1080'+operationResize, '-quality', quality]}
@@ -328,13 +333,13 @@ async function determinerConversionsImages(sourcePath) {
       conversions['image/webp;' + valRef] = {ext: 'webp', resolution: valRef, params: ['-strip', '-resize', ratioInverse?''+valRef+'x'+valAutre+operationResize:''+valAutre+'x'+valRef+operationResize, '-quality', quality]}
     }
 
-    if(valRef >= 720) {
-      conversions['image/webp;720'] = {ext: 'webp', resolution: 720, params: ['-strip', '-resize', ratioInverse?'720x1280'+operationResize:'1280x720'+operationResize, '-quality', quality]}
-    }
+    // if(valRef >= 720) {
+    //   conversions['image/webp;720'] = {ext: 'webp', resolution: 720, params: ['-strip', '-resize', ratioInverse?'720x1280'+operationResize:'1280x720'+operationResize, '-quality', quality]}
+    // }
 
     // Default fallback
     if(valRef >= 480) {
-      conversions['image/webp;480'] = {ext: 'webp', resolution: 480, params: ['-strip', '-resize', ratioInverse?'480x854'+operationResize:'854x480'+operationResize, '-quality', quality]}
+      // conversions['image/webp;480'] = {ext: 'webp', resolution: 480, params: ['-strip', '-resize', ratioInverse?'480x854'+operationResize:'854x480'+operationResize, '-quality', quality]}
       conversions['image/jpeg;480'] = {ext: 'jpg', resolution: 480, params: ['-strip', '-resize', ratioInverse?'480x854'+operationResize:'854x480'+operationResize, '-quality', quality]}
     }
   }
@@ -386,13 +391,14 @@ async function determinerConversionsPoster(sourcePath, opts) {
   const conversions = {
     // Thumbnail : L'image est ramenee sur 128px, et croppee au milieu pour ratio 1:1
     'thumb': {ext: 'jpg', resolution: 128, params: ['-strip', '-resize', '128x128^', '-gravity', 'center', '-extent', '128x128', '-quality', '25']},
+    'small': {ext: 'jpg', resolution: 200, params: ['-strip', '-resize', '200x200^', '-gravity', 'center', '-extent', '200x200', '-quality', '80']},
     // Poster, utilise pour afficher dans un coin d'ecran/preview
-    'poster': {ext: 'jpg', resolution: 240, params: ['-strip', '-resize', ratioInverse?'240x420>':'420x240>', '-quality', '60']},
+    // 'poster': {ext: 'jpg', resolution: 240, params: ['-strip', '-resize', ratioInverse?'240x420>':'420x240>', '-quality', '60']},
   }
 
   // Generer une version "pleine grandeur" en jpeg et webp
   // Peut agir comme poster avant le demarrage du video
-  if(valRef >= 360) {
+  //if(valRef >= 360) {
     var geometrie = null
     if(ratioInverse) {
       geometrie = valRef + 'x' + valAutre + operationResize
@@ -410,7 +416,7 @@ async function determinerConversionsPoster(sourcePath, opts) {
       resolution: valRef,
       params: ['-strip', '-resize', geometrie, '-quality', quality]
     }
-  }
+  //}
 
   return {metadataImage, nbFrames, conversions}
 }
@@ -470,7 +476,7 @@ function genererSnapshotVideoPromise(sourcePath, previewPath) {
       .takeScreenshots(
         {
           count: 1,
-          timestamps: ['2%'],   // Prendre snapshot a 2% du debut du video
+          timestamps: ['4%'],   // Prendre snapshot a 4% du debut du video
           filename: nomFichierPreview,
           folder: folderPreview,
           // size: '640x?',
@@ -480,42 +486,42 @@ function genererSnapshotVideoPromise(sourcePath, previewPath) {
   });
 }
 
-async function genererVideoMp4_480p(sourcePath, destinationPath, opts) {
-  if(!opts) opts = {}
-  const bitrate = opts.bitrate || '1800k'
-        height = opts.height || '480'
-  return await new Promise((resolve, reject) => {
-    new FFmpeg({source: sourcePath})
-      .withVideoBitrate(bitrate)
-      .withSize('?x' + height)
-      .on('error', function(err) {
-          console.error('An error occurred: ' + err.message);
-          reject(err);
-      })
-      .on('end', function(filenames) {
+// async function genererVideoMp4_480p(sourcePath, destinationPath, opts) {
+//   if(!opts) opts = {}
+//   const bitrate = opts.bitrate || '1800k'
+//         height = opts.height || '480'
+//   return await new Promise((resolve, reject) => {
+//     new FFmpeg({source: sourcePath})
+//       .withVideoBitrate(bitrate)
+//       .withSize('?x' + height)
+//       .on('error', function(err) {
+//           console.error('An error occurred: ' + err.message);
+//           reject(err);
+//       })
+//       .on('end', function(filenames) {
 
-        // let shasum = crypto.createHash('sha256');
-        try {
-          let s = fs.ReadStream(destinationPath)
-          let tailleFichier = 0;
-          s.on('data', data => {
-            // shasum.update(data)
-            tailleFichier += data.length;
-          })
-          s.on('end', function () {
-            // const sha256 = shasum.digest('hex')
-            // console.debug('Successfully generated 480p mp4 ' + destinationPath + ", taille " + tailleFichier + ", sha256 " + sha256);
-            // return resolve({tailleFichier, sha256});
-            return resolve({tailleFichier, bitrate, height})
-          })
-        } catch (error) {
-          return reject(error);
-        }
+//         // let shasum = crypto.createHash('sha256');
+//         try {
+//           let s = fs.ReadStream(destinationPath)
+//           let tailleFichier = 0;
+//           s.on('data', data => {
+//             // shasum.update(data)
+//             tailleFichier += data.length;
+//           })
+//           s.on('end', function () {
+//             // const sha256 = shasum.digest('hex')
+//             // console.debug('Successfully generated 480p mp4 ' + destinationPath + ", taille " + tailleFichier + ", sha256 " + sha256);
+//             // return resolve({tailleFichier, sha256});
+//             return resolve({tailleFichier, bitrate, height})
+//           })
+//         } catch (error) {
+//           return reject(error);
+//         }
 
-      })
-      .saveToFile(destinationPath);
-  });
-}
+//       })
+//       .saveToFile(destinationPath);
+//   });
+// }
 
 function readIdentify(filepath) {
   return new Promise((resolve, reject)=>{
@@ -541,5 +547,6 @@ function readIdentifyFrames(filepath) {
 }
 
 module.exports = {
-  genererConversionsImage, genererPosterVideo, genererVideoMp4_480p
+  genererConversionsImage, genererPosterVideo, 
+  // genererVideoMp4_480p
 }

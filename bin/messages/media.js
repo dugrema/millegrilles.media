@@ -299,7 +299,7 @@ async function _indexerDocumentContenu(message) {
   debug("Indexer %s type %s", fuuid, mimetype)
 
   const cleFichier = await recupererCle(fuuid, message)
-  const {cleDechiffree, informationCle, clesPubliques} = cleFichier
+  // const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
   // Downloader et dechiffrer le fichier
   const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
