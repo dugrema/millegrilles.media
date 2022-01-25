@@ -1,6 +1,6 @@
 //const crypto = require('crypto')
 const fs = require('fs')
-const { Hacheur, VerificateurHachage } = require('@dugrema/millegrilles.common/lib/hachage')
+const { Hacheur, VerificateurHachage } = require('@dugrema/millegrilles.utiljs')
 
 async function calculerHachageFichier(pathFichier, opts) {
   if(!opts) opts = {};

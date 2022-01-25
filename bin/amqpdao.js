@@ -1,6 +1,6 @@
 const debug = require('debug')('millegrilles:amqpdao')
 const fs = require('fs')
-const {MilleGrillesPKI, MilleGrillesAmqpDAO} = require('@dugrema/millegrilles.common')
+const { MilleGrillesPKI, MilleGrillesAmqpDAO } = require('@dugrema/millegrilles.nodejs')
 
 const EXPIRATION_MESSAGE_DEFAUT = 30 * 60 * 1000  // 15 minutes en millisec
 

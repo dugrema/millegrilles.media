@@ -1,11 +1,9 @@
 #!/usr/bin/env node
-
 require('dotenv').config()
 const debug = require('debug')('millegrilles:www')
 
 console.info("Env vars : %O", process.env)
 
-const express = require('express')
 const logger = require('morgan')
 const redis = require("redis")
 
@@ -40,8 +38,9 @@ async function init() {
   ]
 
   const root = await initialiserApp({middleware, mq: instAmqpdao})
-  const serverInstance = initialiserServer(root)
+  initialiserServer(root)
 
 }
 
-init()
+// Executer
+init().catch(err=>console.error("Erreur initialisation media : %O", err))

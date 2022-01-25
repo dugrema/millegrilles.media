@@ -1,11 +1,13 @@
 const debug = require('debug')('millegrilles:utilpki')
 const crypto = require('crypto');
-const forge = require('node-forge');
+const forge = require('@dugrema/node-forge');
 const stringify = require('json-stable-stringify');
 const fs = require('fs');
 const path = require('path');
 const tmp = require('tmp');
-const {extraireExtensionsMillegrille} = require('@dugrema/millegrilles.common/lib/forgecommon')
+
+const { forgecommon } = require('@dugrema/millegrilles.utiljs')
+const { extraireExtensionsMillegrille } = forgecommon
 
 const REPERTOIRE_CERTS_TMP = tmp.dirSync().name;  //'/tmp/consignationfichiers.certs';
 console.info("Repertoire temporaire certs : %s", REPERTOIRE_CERTS_TMP);
