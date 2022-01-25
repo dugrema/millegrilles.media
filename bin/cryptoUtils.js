@@ -3,7 +3,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const {Transform} = require('stream')
 const multibase = require('multibase')
-const { creerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.common/lib/chiffrage')
+// const { creerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.common/lib/chiffrage')
+const { getCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.utiljs')
 
 const AES_ALGORITHM = 'aes-256-cbc';  // Meme algorithme utilise sur MG en Python
 const RSA_ALGORITHM = 'RSA-OAEP';

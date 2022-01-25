@@ -8,8 +8,7 @@ const {v4: uuidv4} = require('uuid')
 // const FormData = require('form-data')
 const path = require('path')
 
-// const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.common/lib/mimetype_ext.json')
-const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
+const { getMimetypeExtMap } = require('@dugrema/millegrilles.utiljs')
 
 const {getDecipherPipe4fuuid, creerOutputstreamChiffrage} = require('./cryptoUtils')
 
@@ -39,7 +38,7 @@ async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
   url.pathname = '/fichiers/' + hachage_bytes
   debug("Url download fichier : %O", url)
 
-  const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
+  const extension = getMimetypeExtMap()[mimetype] || '.bin'
 
   const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
   const decryptedPath = tmpDecrypted.path
