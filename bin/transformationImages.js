@@ -3,18 +3,9 @@ const fs = require('fs')
 const path = require('path')
 const tmp = require('tmp-promise')
 const im = require('imagemagick')
-const crypto = require('crypto')
-const multibase = require('multibase')
 const FFmpeg = require('fluent-ffmpeg')
 
 const {chiffrerMemoire} = require('./cryptoUtils')
-
-async function preparerBase64(sourcePath, opts) {
-  // Lire le fichier converti en memoire pour transformer en base64
-  const fichierBuffer = Buffer.from(await fs.promises.readFile(sourcePath))
-  const base64Content = String.fromCharCode.apply(null, multibase.encode('base64', fichierBuffer))
-  return base64Content
-}
 
 async function genererPosterVideo(sourcePath, opts) {
   // Preparer fichier destination decrypte
@@ -138,7 +129,7 @@ async function convertir(
     }
 
     // Creer promise pour continuer le traitement de chiffrage
-    // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs2' })
+    // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs3' })
     const promiseChiffrage = readIdentify(fichierTmp.path).then(async metaConversion=>{
       // Recuperer information image convertie
       debug("Information meta image convertie params %O : %O", cp, metaConversion)
@@ -156,40 +147,28 @@ async function convertir(
       if(cle === 'thumb') {
         // Le thumbnail est extrait et conserve dans la base de donnees
         // Chiffrer le resultat, conserver information pour transactions maitre des cles
-        // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs2' })
+        // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs3' })
         const resultatChiffrage = await chiffrerMemoire(mq, fichierTmp.path, clesPubliques, {
           base64: true,
           identificateurs_document: {type: 'image', fuuid_reference: fuuid},
         })
-        // const resultatChiffrage = await chiffrerTemporaire(
-        //   mq, fichierTmp.path, fichierChiffreTmp.path, clesPubliques, {
-        //     identificateurs_document: {type: 'image', fuuid_reference: fuuid}
-        //   })
 
         // Traitement special pour thumbnail, on l'insere inline
         // data = await preparerBase64(fichierChiffreTmp.path)
         // Supprimer fichiers tmp
-        // fichierChiffreTmp.cleanup()
         fichierTmp.cleanup()
 
         resultat = {
           ...resultat,
           informationImage: {
             ...resultat.informationImage,
-            hachage: resultatChiffrage.meta.hachage_bytes,
+            hachage: resultatChiffrage.meta.hachage,
             taille: resultatChiffrage.tailleFichier,
             data_chiffre: resultatChiffrage.data,
           },
           commandeMaitreCles: resultatChiffrage.commandeMaitreCles,
         }
 
-        // // Transmettre transaction info chiffrage
-        // const domaine = 'MaitreDesCles'
-        // const action = 'sauvegarderCle'
-        // const commandeMaitreCles = resultatChiffrage.commandeMaitreCles
-        // const partition = commandeMaitreCles._partition
-        // delete commandeMaitreCles._partition
-        // await mq.transmettreCommande(domaine, commandeMaitreCles, {action: 'sauvegarderCle', partition})
       }
       else {
         // Copier path du fichier temporaire, il va etre chiffrer a l'upload
@@ -199,31 +178,6 @@ async function convertir(
       debug("Resultat preparation image : %O", resultat)
       return resultat
 
-    //   const informationImage = {
-    //     cle,
-    //     hachage: resultatChiffrage.meta.hachage_bytes,
-    //     width: metaConversion.width,
-    //     height: metaConversion.height,
-    //     mimetype: metaConversion['mime type'],
-    //     taille: resultatChiffrage.tailleFichier,
-    //     resolution: cp.resolution,
-    //   }
-    //   if(data) informationImage.data_chiffre = data
-    //
-    //   // Transmettre transaction info chiffrage
-    //   const domaine = 'MaitreDesCles'
-    //   const action = 'sauvegarderCle'
-    //   const commandeMaitreCles = resultatChiffrage.commandeMaitreCles
-    //   const partition = commandeMaitreCles._partition
-    //   delete commandeMaitreCles._partition
-    //   await mq.transmettreCommande(domaine, commandeMaitreCles, {action: 'sauvegarderCle', partition})
-    //
-    //   return {
-    //     metaConversion,
-    //     informationImage,
-    //     ...resultatChiffrage,
-    //   }
-    //
     })
     .catch(err => {
       // fichierChiffreTmp.cleanup()

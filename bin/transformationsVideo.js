@@ -1,13 +1,8 @@
 const debug = require('debug')('millegrilles:fichiers:transformationsVideo')
 const fs = require('fs')
-const fsPromises = require('fs/promises')
 const tmpPromises = require('tmp-promise')
 const path = require('path')
-const multibase = require('multibase')
 const FFmpeg = require('fluent-ffmpeg')
-const {
-  chargerCleDechiffrage, chargerCleDechiffragePermission, creerOutputstreamChiffrage, gcmStreamReaderFactory
-} = require('./cryptoUtils')
 
 const {uploaderFichierTraite} = require('./transfertConsignation')
 

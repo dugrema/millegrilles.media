@@ -21,7 +21,7 @@ async function init(opts) {
 
   // Charger PKI
   const instPki = new MilleGrillesPKI()
-  instPki.initialiserPkiPEMS(certPems)
+  await instPki.initialiserPkiPEMS(certPems)
 
   if(opts.redisClient) {
     // Injecter le redisClient dans pki
