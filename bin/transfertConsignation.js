@@ -8,7 +8,7 @@ const {v4: uuidv4} = require('uuid')
 // const FormData = require('form-data')
 const path = require('path')
 
-const { getMimetypeExtMap } = require('@dugrema/millegrilles.utiljs')
+const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
 
 const {getDecipherPipe4fuuid, creerOutputstreamChiffrage} = require('./cryptoUtils')
 
@@ -38,7 +38,7 @@ async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
   url.pathname = '/fichiers/' + hachage_bytes
   debug("Url download fichier : %O", url)
 
-  const extension = getMimetypeExtMap()[mimetype] || '.bin'
+  const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
 
   const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
   const decryptedPath = tmpDecrypted.path
@@ -61,7 +61,7 @@ async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
 // Chiffre et upload un fichier cree localement
 // Supprime les fichiers source et chiffres
 async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificateurs_document) {
-  debug("Upload fichier traite : %s", pathFichier)
+  // debug("Upload fichier traite : %s", pathFichier)
   // debug("CLES PUBLIQUES : %O", clesPubliques)
   const pathStr = pathFichier.path || pathFichier
   const cleanup = pathFichier.cleanup
@@ -74,7 +74,8 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
     debug("Url upload fichier : %O", url)
 
     // Creer stream chiffrage
-    const chiffrageStream = await creerOutputstreamChiffrage(clesPubliques, identificateurs_document, 'GrosFichiers')
+    const infoCertCa = {cert: mq.pki.caForge, fingerprint: mq.pki.fingerprintCa}
+    const chiffrageStream = await creerOutputstreamChiffrage(clesPubliques, identificateurs_document, 'GrosFichiers', infoCertCa)
     readStream.pipe(chiffrageStream)
 
     // const form = new FormData()
@@ -189,8 +190,8 @@ async function putAxios(url, uuidCorrelation, position, dataBuffer) {
   debug("Reponse put %s : %s", urlPosition.href, reponsePut.status)
 }
 
-function dechiffrerStream(stream, cleFichier, pathDestination) {
-  const decipherPipe = getDecipherPipe4fuuid(
+async function dechiffrerStream(stream, cleFichier, pathDestination) {
+  const decipherPipe = await getDecipherPipe4fuuid(
     cleFichier.cleSymmetrique,
     cleFichier.metaCle.iv,
     {tag: cleFichier.metaCle.tag}

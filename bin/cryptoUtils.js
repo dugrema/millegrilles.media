@@ -1,11 +1,12 @@
 const debug = require('debug')('millegrilles:fichiers:cryptoUtils')
 const fs = require('fs');
-//const crypto = require('crypto');
-//const {Transform} = require('stream')
+const crypto = require('crypto');
+const {Transform} = require('stream')
 const multibase = require('multibase')
 // const { creerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.common/lib/chiffrage')
-const { getCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.utiljs')
-const { base64 } = require('multiformats/bases/base64')
+const { preparerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.nodejs/src/chiffrage')
+const { base64 } = require('multiformats/bases/base64');
+const { dechiffrerCle } = require('@dugrema/millegrilles.utiljs/src/chiffrage.ed25519');
 
 const AES_ALGORITHM = 'aes-256-cbc';  // Meme algorithme utilise sur MG en Python
 const RSA_ALGORITHM = 'RSA-OAEP';
@@ -76,106 +77,133 @@ const RSA_ALGORITHM = 'RSA-OAEP';
 //   })
 // }
 
-// function getDecipherPipe4fuuid(cleSecrete, iv, opts) {
-//   if(!opts) opts = {}
-//   // On prepare un decipher pipe pour decrypter le contenu.
+async function getDecipherPipe4fuuid(cleSecrete, iv, opts) {
+  if(!opts) opts = {}
+  // On prepare un decipher pipe pour decrypter le contenu.
 
-//   let ivBuffer = Buffer.from(multibase.decode(iv));
+  if(typeof(iv) === 'string') iv = base64.decode(iv)
 
-//   let decryptedSecretKey;
-//   if(typeof cleSecrete === 'string') {
-//     // decryptedSecretKey = Buffer.from(forge.util.binary.hex.decode(decryptedSecretKey));
-//     if( opts.cleFormat !== 'hex' ) {
-//       decryptedSecretKey = Buffer.from(cleSecrete, 'base64');
-//       decryptedSecretKey = decryptedSecretKey.toString('utf8');
-//     } else {
-//       decryptedSecretKey = cleSecrete
-//     }
+  const decryptedSecretKey = cleSecrete  // await dechiffrerCle(cleSecrete)
 
-//     // debug("**** DECRYPTED SECRET KEY **** : %O", decryptedSecretKey)
-//     var typedArray = new Uint8Array(decryptedSecretKey.match(/[\da-f]{2}/gi).map(function (h) {
-//      return parseInt(h, 16)
-//     }));
+  // let decryptedSecretKey;
+  // if(typeof cleSecrete === 'string') {
+  //   // decryptedSecretKey = Buffer.from(forge.util.binary.hex.decode(decryptedSecretKey));
+  //   if( opts.cleFormat !== 'hex' ) {
+  //     decryptedSecretKey = Buffer.from(cleSecrete, 'base64');
+  //     decryptedSecretKey = decryptedSecretKey.toString('utf8');
+  //   } else {
+  //     decryptedSecretKey = cleSecrete
+  //   }
 
-//     decryptedSecretKey = typedArray;
-//   } else {
-//     decryptedSecretKey = cleSecrete;
-//   }
+  //   // debug("**** DECRYPTED SECRET KEY **** : %O", decryptedSecretKey)
+  //   var typedArray = new Uint8Array(decryptedSecretKey.match(/[\da-f]{2}/gi).map(function (h) {
+  //    return parseInt(h, 16)
+  //   }));
 
-//   // Creer un decipher stream
-//   const transformStream = new Transform()
-//   var ivLu = true; //opts.tag?true:false
-//   transformStream._transform = (chunk, encoding, next) => {
-//     // debug("Chunk taille : %s, encoding : %s", chunk.length, encoding)
+  //   decryptedSecretKey = typedArray;
+  // } else {
+  //   decryptedSecretKey = cleSecrete;
+  // }
 
-//     if(!ivLu) {
-//       ivLu = true
+  // Creer un decipher stream
+  const transformStream = new Transform()
+  // var ivLu = true; //opts.tag?true:false
+  transformStream._transform = (chunk, encoding, next) => {
+    // debug("Chunk taille : %s, encoding : %s", chunk.length, encoding)
 
-//       // Verifier le iv
-//       const ivExtrait = chunk.slice(0, 16).toString('base64')
-//       if(ivExtrait !== iv) {
-//         console.error('cryptoUtils.decrypter: IV ne correspond pas, chunk length : %s, IV lu : %s, IV attendu : %s', chunk.length, ivExtrait, iv)
-//         return next('cryptoUtils.decrypter: IV ne correspond pas')  // err
-//       }
-//       // Retirer les 16 premiers bytes (IV) du fichier dechiffre
-//       chunk = chunk.slice(16)
-//     }
-//     transformStream.push(chunk)
-//     next()
-//   }
+    // if(!ivLu) {
+    //   ivLu = true
 
-//   var decipher = null
-//   if(opts.tag) {
-//     const bufferTag = Buffer.from(multibase.decode(opts.tag))
-//     decipher = crypto.createDecipheriv('aes-256-gcm', decryptedSecretKey, ivBuffer)
-//     decipher.setAuthTag(bufferTag)
-//   } else {
-//     throw new Error("Format chiffrage non supporte")
-//   }
+    //   // Verifier le iv
+    //   const ivExtrait = chunk.slice(0, 16).toString('base64')
+    //   if(ivExtrait !== iv) {
+    //     console.error('cryptoUtils.decrypter: IV ne correspond pas, chunk length : %s, IV lu : %s, IV attendu : %s', chunk.length, ivExtrait, iv)
+    //     return next('cryptoUtils.decrypter: IV ne correspond pas')  // err
+    //   }
+    //   // Retirer les 16 premiers bytes (IV) du fichier dechiffre
+    //   chunk = chunk.slice(16)
+    // }
 
-//   decipher.pipe(transformStream)
+    transformStream.push(chunk)
+    next()
+  }
 
-//   transformStream.close = _ => {decipher.end()}
+  var decipher = null
+  if(opts.tag) {
+    const bufferTag = base64.decode(opts.tag)
+    // decipher = crypto.createDecipheriv('aes-256-gcm', decryptedSecretKey, ivBuffer)
+    decipher = crypto.createDecipheriv('chacha20-poly1305', decryptedSecretKey, iv, { authTagLength: 16 })
+    decipher.setAuthTag(bufferTag)
+  } else {
+    throw new Error("Format chiffrage non supporte")
+  }
 
-//   return {reader: decipher, writer: transformStream}
-// }
+  decipher.pipe(transformStream)
 
-// async function creerOutputstreamChiffrage(certificatsPem, identificateurs_document, domaine, opts) {
-//   opts = opts || {}
+  transformStream.close = _ => {decipher.end()}
 
-//   const cipher = await creerCipher()
+  return {reader: decipher, writer: transformStream}
+}
 
-//   const transformStream = new Transform()
-//   transformStream.byteCount = 0
-//   transformStream._transform = (chunk, encoding, next) => {
-//     const cipherChunk = cipher.update(chunk)
-//     transformStream.push(cipherChunk)
-//     transformStream.byteCount += cipherChunk.length
-//     next()
-//   }
-//   transformStream.resultat = null
+/**
+ * 
+ * @param {*} certificatsPem 
+ * @param {*} identificateurs_document 
+ * @param {*} domaine 
+ * @param {*} certCaInfo {cert, fingerprint}
+ * @param {*} opts 
+ * @returns 
+ */
+async function creerOutputstreamChiffrage(certificatsPem, identificateurs_document, domaine, certCaInfo, opts) {
+  opts = opts || {}
 
-//   transformStream.on('end', async _ =>{
-//     const infoChiffrage = await cipher.finish()
-//     const meta = infoChiffrage.meta
+  const clePubliqueCa = certCaInfo.cert.publicKey.publicKeyBytes
+  const cipherInfo = await preparerCipher({clePubliqueEd25519: clePubliqueCa})
+  console.debug("!!! CipherInfo: %O", cipherInfo)
+  const cipher = cipherInfo.cipher,
+        iv = base64.encode(cipherInfo.iv)
 
-//     // Preparer commande MaitreDesCles
-//     transformStream.commandeMaitredescles = await preparerCommandeMaitrecles(
-//       certificatsPem, infoChiffrage.password, domaine,
-//       meta.hachage_bytes, meta.iv, meta.tag,
-//       identificateurs_document,
-//       opts
-//     )
-//     debug("Resultat chiffrage disponible : %O", transformStream.commandeMaitredescles)
-//   })
+  const transformStream = new Transform()
+  transformStream.byteCount = 0
+  transformStream._transform = async (chunk, encoding, next) => {
+    const cipherChunk = await cipher.update(chunk)
+    transformStream.push(cipherChunk)
+    transformStream.byteCount += cipherChunk.length
+    next()
+  }
+  transformStream.resultat = null
 
-//   return transformStream
-// }
+  transformStream.on('end', async _ =>{
+    const infoChiffrage = await cipher.finalize()
+    console.debug("!!! InfoChiffrage : %O", infoChiffrage)
+    // const meta = {iv: cipherInfo.iv, ...infoChiffrage.meta}
+
+    // Preparer commande MaitreDesCles
+    transformStream.commandeMaitredescles = await preparerCommandeMaitrecles(
+      certificatsPem, cipherInfo.secretKey, domaine,
+      infoChiffrage.hachage, iv, infoChiffrage.tag,
+      identificateurs_document,
+      opts
+    )
+
+    // Ajouter cle chiffree pour cle de millegrille
+    transformStream.commandeMaitredescles.cles[certCaInfo.fingerprint] = cipherInfo.secretChiffre
+
+    debug("Resultat chiffrage disponible : %O", transformStream.commandeMaitredescles)
+  })
+
+  return transformStream
+}
 
 async function chiffrerMemoire(pki, fichierSrc, clesPubliques, opts) {
   opts = opts || {}
 
   const identificateurs_document = opts.identificateurs_document || {}
+
+  // const contenuChiffre = await chiffrer(message, {clePubliqueEd25519: publicKeyBytes})
+  // console.debug("Contenu chiffre : %O", contenuChiffre)
+  // const {ciphertext, secretKey, meta} = contenuChiffre,
+  //       {iv, tag} = meta
 
   // Creer cipher
   debug("Cles publiques pour cipher : %O", clesPubliques)
@@ -183,13 +211,16 @@ async function chiffrerMemoire(pki, fichierSrc, clesPubliques, opts) {
     clesPubliques, 'GrosFichiers', identificateurs_document
   )
 
-  return new Promise((resolve, reject)=>{
+  return new Promise(async (resolve, reject)=>{
     const s = fs.ReadStream(fichierSrc)
     var tailleFichier = 0
-    var buffer = [];
+    var buffer = new Uint8Array(0);
     s.on('error', err=>reject(err))
-    s.on('data', data => {
-      const contenuCrypte = cipher.update(data);
+    s.on('data', async data => {
+      let contenuCrypte = await cipher.update(data);
+      if(!ArrayBuffer.isView()) {
+        contenuCrypte = new Uint8Array(contenuCrypte)
+      }
       tailleFichier += contenuCrypte.length
       buffer = [...buffer, ...contenuCrypte]
     })
@@ -215,8 +246,8 @@ async function chiffrerMemoire(pki, fichierSrc, clesPubliques, opts) {
 }
 
 module.exports = {
-  // getDecipherPipe4fuuid, 
+  getDecipherPipe4fuuid, 
   // gcmStreamReaderFactory,
-  // creerOutputstreamChiffrage,
+  creerOutputstreamChiffrage,
   chiffrerMemoire,
 }

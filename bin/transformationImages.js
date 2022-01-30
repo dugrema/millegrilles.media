@@ -148,7 +148,7 @@ async function convertir(
         // Le thumbnail est extrait et conserve dans la base de donnees
         // Chiffrer le resultat, conserver information pour transactions maitre des cles
         // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs3' })
-        const resultatChiffrage = await chiffrerMemoire(mq, fichierTmp.path, clesPubliques, {
+        const resultatChiffrage = await chiffrerMemoire(mq.pki, fichierTmp.path, clesPubliques, {
           base64: true,
           identificateurs_document: {type: 'image', fuuid_reference: fuuid},
         })
