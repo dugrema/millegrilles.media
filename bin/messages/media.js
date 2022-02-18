@@ -327,8 +327,9 @@ async function _indexerDocumentContenu(message) {
 
 async function recupererCle(hachageFichier, permission) {
   const liste_hachage_bytes = [hachageFichier]
+  // Note: permission n'est plus requise - le certificat media donne acces a toutes les cles (domaine=GrosFichiers)
   // Le message peut avoir une permission attachee
-  if(permission.permission) permission = permission.permission
+  // if(permission.permission) permission = permission.permission
 
   // Demander cles publiques pour rechiffrage
   const reponseClesPubliques = await _mq.transmettreRequete(
@@ -338,7 +339,7 @@ async function recupererCle(hachageFichier, permission) {
   // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
   const domaine = 'MaitreDesCles',
         action = 'dechiffrage'
-  const requete = {liste_hachage_bytes, permission}
+  const requete = {liste_hachage_bytes}  //, permission}
   debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
   const reponseCle = await _mq.transmettreRequete(domaine, requete, {action, ajouterCertificat: true, decoder: true})
   debug("Reponse requete dechiffrage : %O", reponseCle)
