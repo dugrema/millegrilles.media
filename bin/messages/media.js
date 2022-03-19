@@ -43,6 +43,27 @@ function enregistrerChannel() {
         exchange,
       }
     )
+
+    _mq.routingKeyManager.addRoutingKeyCallback(
+      (routingKey, message)=>{return genererPreviewImage(message)},
+      ['commande.fichiers.genererPosterImage'],
+      {
+        // operationLongue: true,
+        qCustom: 'image',
+        exchange,
+      }
+    )
+
+    _mq.routingKeyManager.addRoutingKeyCallback(
+      (routingKey, message)=>{return genererPreviewVideo(message)},
+      ['commande.fichiers.genererPosterVideo'],
+      {
+        // operationLongue: true,
+        qCustom: 'image',
+        exchange,
+      }
+    )
+
   })
 
   // Exchange 3.protege (default) uniquement
@@ -58,22 +79,6 @@ function enregistrerChannel() {
     }
   )
 
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return genererPreviewImage(message)},
-    ['commande.fichiers.genererPosterImage'],
-    {
-      // operationLongue: true,
-      qCustom: 'image',
-    }
-  )
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return genererPreviewVideo(message)},
-    ['commande.fichiers.genererPosterVideo'],
-    {
-      // operationLongue: true,
-      qCustom: 'image',
-    }
-  )
 }
 
 async function genererPreviewImage(message) {
@@ -135,7 +140,7 @@ async function genererPreviewImage(message) {
 
   debug("Transaction associer images converties : %O", transactionAssocier)
   _mq.transmettreTransactionFormattee(
-    transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true}
+    transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
   ).catch(err=>{
       console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
     })
@@ -237,7 +242,7 @@ async function genererPreviewVideo(message) {
   debug("Transaction associer images converties : %O", transactionAssocier)
 
   _mq.transmettreTransactionFormattee(
-    transactionAssocier, 'GrosFichiers', {action: 'associerConversions', ajouterCertificat: true}
+    transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
   )
     .catch(err=>{
       console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)

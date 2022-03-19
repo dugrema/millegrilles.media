@@ -442,7 +442,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
 
     // Transmettre transaction pour associer le video au fuuid
     const domainePreview = 'GrosFichiers', actionPreview = 'associerVideo'
-    await mq.transmettreTransactionFormattee(transactionAssocierPreview, domainePreview, {action: actionPreview, ajouterCertificat: true})
+    await mq.transmettreTransactionFormattee(transactionAssocierPreview, domainePreview, {action: actionPreview, exchange: '4.secure', ajouterCertificat: true})
   } catch(err) {
     console.error("transformationsVideo: Erreur transcodage : %O", err)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`)
