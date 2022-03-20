@@ -9,21 +9,23 @@
     "dev": "export $(cat .env.development .env.local | grep -v ^\\# | xargs) && npm start"
   },
   "dependencies": {
-    "@dugrema/millegrilles.utiljs": "github:dugrema/millegrilles.utiljs#2022.2",
     "@dugrema/millegrilles.nodejs": "github:dugrema/millegrilles.nodejs#2022.2",
-    "@dugrema/node-forge": "github:dugrema/forge#ed25519",
-    "axios": "^0.26.1",
-    "debug": "~4.3.4",
-    "dotenv": "^16.0.0",
-    "express": "~4.17.3",
     "fluent-ffmpeg": "^2.1.2",
     "form-data": "^4.0.0",
     "imagemagick": "^0.1.3",
-    "morgan": "~1.10.0",
     "pdf-parse": "^1.1.1",
-    "spdy": "^4.0.2",
     "stream-buffers": "^3.0.2",
     "tmp-promise": "^3.0.3"
+  },
+  "peerDependencies": {
+    "@dugrema/millegrilles.utiljs": "github:dugrema/millegrilles.utiljs#2022.2",
+    "@dugrema/node-forge": "github:dugrema/forge#ed25519",
+    "axios": "^0",
+    "debug": "~4",
+    "dotenv": "^16.0.0",
+    "express": "~4",
+    "morgan": "~1.10.0",
+    "spdy": "^4.0.2"
   },
   "devDependencies": {
     "jest": "^27.5.1"

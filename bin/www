@@ -6,20 +6,52 @@ console.info("Env vars : %O", process.env)
 
 const logger = require('morgan')
 const redis = require("redis")
+const fs = require('fs')
 
 const {initialiser: initialiserServer} = require('./server')
 const {initialiser: initialiserApp} = require('./app');
 const amqpdao = require('./amqpdao')
 
+const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
+      CERT_FILE = process.env.MG_MQ_CERTFILE,
+      KEY_CA_FILE = process.env.MG_MQ_KEYFILE,
+      REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD
+
+// Preparer certificats, mots de passe
+function chargerCredendials() {
+  const credentials = {
+    millegrille: fs.readFileSync(CERT_CA_FILE).toString('utf-8'),
+    cert: fs.readFileSync(CERT_FILE).toString('utf-8'),
+    key: fs.readFileSync(KEY_CA_FILE).toString('utf-8'),
+    redis_password: fs.readFileSync(REDIS_PWD_FILE).toString('utf-8'),
+  }
+  return credentials
+}
+
 async function init() {
+
+  const credentials = chargerCredendials()
 
   // Preparer client redis (cache)
   const redisHost = process.env.MG_REDIS_HOST || 'redis',
         redisPortStr = process.env.MG_REDIS_PORT || '6379'
+
   const redisClient = redis.createClient({
-    host: redisHost,
-    port: Number(redisPortStr),
+    username: 'client_nodejs',
+    password: credentials.redis_password,
+    socket: {
+      host: redisHost,
+      port: Number(redisPortStr), 
+      tls: true,
+      ca: credentials.millegrille,
+      cert: credentials.cert,
+      key: credentials.key,
+    }
   })
+  
+  debug("Redis client information :\n%O", redisClient)
+  await redisClient.connect()
+  await redisClient.ping()
 
   // Connexion AMQ
   const {amqpdao: instAmqpdao} = await amqpdao.init({redisClient})
