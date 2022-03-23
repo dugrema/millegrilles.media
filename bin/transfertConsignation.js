@@ -148,7 +148,7 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
 
     debug("Commande maitre des cles signee : %O", commandeMaitrecles)
 
-    const commandePost = { commandeMaitrecles }
+    const commandePost = { cles: commandeMaitrecles }
     const reponsePost = await axios({
       method: 'POST',
       httpsAgent: _httpsAgent,
