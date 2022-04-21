@@ -35,7 +35,7 @@ function setUrlServeurConsignation(url, pki) {
 async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
 
   const url = new URL(_urlServeurConsignation)
-  url.pathname = '/fichiers/' + hachage_bytes
+  url.pathname = '/fichiers_transfert/' + hachage_bytes
   debug("Url download fichier : %O", url)
 
   const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
@@ -70,7 +70,7 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
   const url = new URL(_urlServeurConsignation)
   try {
     const readStream = fs.createReadStream(pathStr)
-    url.pathname = '/fichiers/' + uuidCorrelation + '/0'
+    url.pathname = '/fichiers_transfert/' + uuidCorrelation + '/0'
     debug("Url upload fichier : %O", url)
 
     // Creer stream chiffrage
@@ -137,7 +137,7 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
     })
 
     // Emettre POST avec info maitredescles
-    url.pathname = '/fichiers/' + uuidCorrelation
+    url.pathname = '/fichiers_transfert/' + uuidCorrelation
 
     // Signer commande maitre des cles
     var commandeMaitrecles = chiffrageStream.commandeMaitredescles
@@ -162,7 +162,7 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
 
   } catch(e) {
     debug("Erreur upload fichier traite %s, DELETE tmp serveur. Erreur : %O", uuidCorrelation, e)
-    url.pathname = '/fichiers/' + uuidCorrelation
+    url.pathname = '/fichiers_transfert/' + uuidCorrelation
     //await axios({method: 'DELETE', httpsAgent: _httpsAgent, url: url.href})
     throw e  // Rethrow
   } finally {
@@ -175,7 +175,7 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
 async function putAxios(url, uuidCorrelation, position, dataBuffer) {
   // Emettre POST avec info maitredescles
   const urlPosition = new URL(url.href)
-  urlPosition.pathname = path.join('/fichiers', uuidCorrelation, ''+position)
+  urlPosition.pathname = path.join('/fichiers_transfert', uuidCorrelation, ''+position)
 
   debug("putAxios url %s taille %s", urlPosition, dataBuffer.length)
 
