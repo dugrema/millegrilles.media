@@ -195,10 +195,7 @@ async function genererPreviewVideo(message) {
   const versionCourante = message.version_courante || {},
         hachageFichier = message.fuuid || message.hachage || message.fuuid_v_courante || versionCourante.fuuid || versionCourante.hachage,
         mimetype = message.mimetype
-  // if(message.version_courante) {
-  //   // C'est une retransmission
-  //   hachageFichier = message.version_courante.hachage
-  // }
+
   if(!hachageFichier) {
     console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
     return
@@ -218,36 +215,51 @@ async function genererPreviewVideo(message) {
     debug("Debut generation preview")
     resultatConversion = await traitementMedia.genererPreviewVideo(_mq, fichierDechiffre, message, optsConversion)
     debug("Fin traitement preview, resultat : %O", resultatConversion)
-  } finally {
-    cleanup()  // Supprimer fichier dechiffre temporaire
-  }
 
-  const {metadataImage, metadataVideo, nbFrames, conversions} = resultatConversion
+    const {metadataImage, metadataVideo, conversions} = resultatConversion
 
-  const transactionAssocier = {
-    tuuid: message.tuuid,
-    fuuid: message.fuuid,
-    width: metadataImage.width,
-    height: metadataImage.height,
-    mimetype: mimetype,
-    metadata: metadataVideo,
-  }
-  transactionAssocier.anime = true
-
-  // Extraire information d'images converties sous un dict
-  let resultatPreview = null  // Utiliser poster (legacy)
-  const images = await traiterConversions(hachageFichier, conversions, clesPubliques)
-  transactionAssocier.images = images
-
-  debug("Transaction associer images converties : %O", transactionAssocier)
-
-  _mq.transmettreTransactionFormattee(
-    transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
-  )
+    const transactionAssocier = {
+      tuuid: message.tuuid,
+      fuuid: message.fuuid,
+      width: metadataImage.width,
+      height: metadataImage.height,
+      mimetype: mimetype,
+      metadata: metadataVideo,
+    }
+    transactionAssocier.anime = true
+  
+    // Extraire information d'images converties sous un dict
+    const images = await traiterConversions(hachageFichier, conversions, clesPubliques)
+    transactionAssocier.images = images
+  
+    debug("Transaction associer images converties : %O", transactionAssocier)
+  
+    _mq.transmettreTransactionFormattee(
+      transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
+    )
     .catch(err=>{
       console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
       debug("ERROR media.genererPreviewImage Erreur association conversions d'image message %O", message)
     })
+
+    // Probleme - transcodage video ici bloque la Q de traitement des images
+    // // Conversion videos 240p en mp4 et vp9
+    // const tuuid = message.tuuid
+    // const commandeMp4 = {
+    //   tuuid: tuuid, fuuid: hachageFichier, mimetype: 'video/mp4', videoBitrate: 250000, audioBitrate: '64k', height: 240,
+    // }
+    // const commandeVp9 = {
+    //   tuuid: tuuid, fuuid: hachageFichier, mimetype: 'video/webm', videoBitrate: 250000, audioBitrate: '64k', height: 320,
+    // }
+    // await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, commandeMp4)
+    //   .catch(err=>console.error("media._traiterCommandeTranscodage ERROR mp4 %s: %O", message.fuuid, err))
+    // await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, commandeVp9)
+    //   .catch(err=>console.error("media._traiterCommandeTranscodage ERROR webm %s: %O", message.fuuid, err))
+
+  } finally {
+    cleanup()  // Supprimer fichier dechiffre temporaire
+  }
+
 }
 
 async function _traiterCommandeTranscodage(message) {
