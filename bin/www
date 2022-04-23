@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 require('dotenv').config()
-const debug = require('debug')('millegrilles:www')
+const debug = require('debug')('www')
 
 console.info("Env vars : %O", process.env)
 
@@ -70,8 +70,26 @@ async function init() {
   ]
 
   const root = await initialiserApp({middleware, mq: instAmqpdao})
-  initialiserServer(root)
+  const server = initialiserServer(root)
 
+  // Hook pour un health check regulier (surtout pour connexion MQ)
+  setInterval(()=>healthCheck(server, instAmqpdao).catch(err=>console.error("www.healthCheck ERROR : %O", err)), 60000)
+}
+
+async function healthCheck(server, instAmqpdao) {
+
+  const erreurMq = instAmqpdao.channelError || instAmqpdao.connectionError || false
+
+  debug("www.healthCheck %O status : erreurMq=%s", new Date(), erreurMq)
+
+  if(erreurMq) {
+    console.error("www.healthCheck Echec verification, fermeture du serveur")
+    instAmqpdao.close()
+      .then(()=>{
+        server.close()
+        process.exit()
+      })
+  }
 }
 
 // Executer
