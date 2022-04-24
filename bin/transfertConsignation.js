@@ -132,6 +132,7 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
 
     // Signer commande maitre des cles
     var commandeMaitrecles = chiffrageStream.commandeMaitredescles
+
     const partition = commandeMaitrecles._partition
     delete commandeMaitrecles['_partition']
     commandeMaitrecles = await mq.pki.formatterMessage(

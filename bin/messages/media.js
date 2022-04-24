@@ -178,13 +178,21 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
       // Ajouter information pour image small
       small.hachage = hachage
       small.taille = taille
-    
+     
       let transactionContenu = {...transactionAssocier}
       transactionContenu.images = {thumb, small}
       transactionContenu = await _mq.pki.formatterMessage(
         transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
       debug("Transaction thumbnails : %O", transactionContenu)
+
+      // Emettre la commande de maitre des cles du thumbnail. Les autres cles sont transferees au store de consignation.
+      const commandeClesThumbnail = thumbnails.thumb.commandeMaitreCles
+      const partition = commandeClesThumbnail._partition
+      delete commandeClesThumbnail._partition
+      await _mq.transmettreCommande(DOMAINE_MAITREDESCLES, commandeClesThumbnail, {action: ACTION_SAUVEGARDERCLE, partition})
+
       await _storeConsignation.stagingReady(_mq, transactionContenu, commandeMaitrecles, uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
+
     } catch(err) {
       await _storeConsignation.stagingDelete(uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
       throw err
