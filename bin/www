@@ -18,7 +18,7 @@ const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
       CERT_FILE = process.env.MG_MQ_CERTFILE,
       KEY_CA_FILE = process.env.MG_MQ_KEYFILE,
       REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD,
-      URL_CONSIGNATION_FICHIERS = process.env.MG_CONSIGNATION_URL || 'https://fichiers:444/fichiers_transfert',
+      URL_CONSIGNATION_FICHIERS = process.env.MG_CONSIGNATION_URL || 'https://fichiers:443/fichiers_transfert',
       PATH_STAGING = process.env.PATH_STAGING || '/var/opt/millegrilles/consignation/staging/media'
 
 // Preparer certificats, mots de passe
