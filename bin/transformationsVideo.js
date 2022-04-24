@@ -4,7 +4,7 @@ const tmpPromises = require('tmp-promise')
 const path = require('path')
 const FFmpeg = require('fluent-ffmpeg')
 
-const {uploaderFichierTraite} = require('./transfertConsignation')
+const transfertConsignation = require('./transfertConsignation')
 
 const PROFILS_TRANSCODAGE = {
   webm: {
@@ -369,7 +369,7 @@ async function extraireFichierTemporaire(fichierPath, inputStream) {
   return promiseOutput
 }
 
-async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, message) {
+async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, message, storeConsignation) {
   debug("Commande traiterCommandeTranscodage video recue : %O", message)
 
   // Verifier si le preview est sur une image chiffree - on va avoir une permission de dechiffrage
@@ -377,7 +377,8 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       fuuid = message.fuuid,
       mimetype = message.mimetype,
       videoBitrate = message.videoBitrate,
-      height = message.resolutionVideo || message.height
+      height = message.resolutionVideo || message.height,
+      uuidCorrelationCleanup = null
 
   try {
     const profil = getProfilTranscodage(message)
@@ -407,44 +408,68 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     const opts = {...profil, progressCb}
     debug("Debut dechiffrage fichier video, opts : %O", opts)
     const fichierOutputTmp = await tmpPromises.file({prefix: 'video-', keep: true})
-    let resultatTranscodage = null, resultatUpload = null
     try {
       const outputStream = fs.createWriteStream(fichierOutputTmp.path)
-      resultatTranscodage = await transcoderVideo(inputStreamFactory, outputStream, opts)
+      let resultatTranscodage = await transcoderVideo(inputStreamFactory, outputStream, opts)
       debug("Resultat transcodage : %O", resultatTranscodage)
-      resultatUpload = await uploaderFichierTraite(mq, fichierOutputTmp.path, clesPubliques, identificateurs_document)
+
+      // resultatUpload = await uploaderFichierTraite(mq, fichierOutputTmp.path, clesPubliques, identificateurs_document)
+      var {uuidCorrelation, commandeMaitrecles, hachage, taille} = await transfertConsignation.stagerFichier(
+        mq, fichierOutputTmp.path, clesPubliques, identificateurs_document, storeConsignation)
+      uuidCorrelationCleanup = uuidCorrelation
+      
+      const probeInfo = resultatTranscodage.probe
+
+      // Transmettre transaction associer video transcode
+      var transactionAssocierVideo = {
+        tuuid, fuuid,
+  
+        mimetype: message.mimetype,
+        fuuid_video: hachage,
+        hachage: hachage,
+  
+        width: probeInfo.width,
+        height: probeInfo.height,
+        codec: profil.videoCodecName,
+        bitrate: resultatTranscodage.video.videoBitrate,
+        taille_fichier: taille,
+      }
+      transactionAssocierVideo = await mq.pki.formatterMessage(
+        transactionAssocierVideo, 'GrosFichiers', {action: 'associerVideo', ajouterCertificat: true})
+      debug("Transaction transcoder video : %O", transactionAssocierVideo)
+
     } finally {
       fichierOutputTmp.cleanup().catch(err=>{debug("Err cleanup fichier video tmp (OK) : %O", err)})
     }
 
-    debug("Resultat transcodage : %O\nResultat upload: %O", resultatTranscodage, resultatUpload)
+    await storeConsignation.stagingReady(mq, transactionAssocierVideo, commandeMaitrecles, uuidCorrelation)
 
-    const probeInfo = resultatTranscodage.probe
+    // const probeInfo = resultatTranscodage.probe
 
-    // Transmettre transaction associer video transcode
-    const transactionAssocierPreview = {
-      tuuid, fuuid,
+    // // Transmettre transaction associer video transcode
+    // const transactionAssocierPreview = {
+    //   tuuid, fuuid,
 
-      mimetype: message.mimetype,
-      fuuid_video: resultatUpload.hachage,
-      hachage: resultatUpload.hachage,
+    //   mimetype: message.mimetype,
+    //   fuuid_video: resultatUpload.hachage,
+    //   hachage: resultatUpload.hachage,
 
-      width: probeInfo.width,
-      height: probeInfo.height,
-      codec: profil.videoCodecName,
-      bitrate: resultatTranscodage.video.videoBitrate,
-      taille_fichier: resultatUpload.taille,
-    }
+    //   width: probeInfo.width,
+    //   height: probeInfo.height,
+    //   codec: profil.videoCodecName,
+    //   bitrate: resultatTranscodage.video.videoBitrate,
+    //   taille_fichier: resultatUpload.taille,
+    // }
 
-    debug("Transaction transcoder video : %O", transactionAssocierPreview)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`, {exchange: '2.prive'})
 
     // Transmettre transaction pour associer le video au fuuid
-    const domainePreview = 'GrosFichiers', actionPreview = 'associerVideo'
-    await mq.transmettreTransactionFormattee(transactionAssocierPreview, domainePreview, {action: actionPreview, exchange: '4.secure', ajouterCertificat: true})
+    // const domainePreview = 'GrosFichiers', actionPreview = 'associerVideo'
+    // await mq.transmettreTransactionFormattee(transactionAssocierPreview, domainePreview, {action: actionPreview, exchange: '4.secure', ajouterCertificat: true})
   } catch(err) {
     console.error("transformationsVideo: Erreur transcodage : %O", err)
+    if(uuidCorrelationCleanup) storeConsignation.stagingDelete(uuidCorrelationCleanup)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`)
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`, {exchange: '2.prive'})
     throw err

@@ -302,18 +302,18 @@ async function genererPreviewVideo(message) {
     transactionAssocier.anime = true
   
     // Extraire information d'images converties sous un dict
-    const images = await traiterConversions(hachageFichier, conversions, clesPubliques)
-    transactionAssocier.images = images
+    const images = await traiterConversions(hachageFichier, conversions, clesPubliques, transactionAssocier)
+    // transactionAssocier.images = images
   
-    debug("Transaction associer images converties : %O", transactionAssocier)
+    // debug("Transaction associer images converties : %O", transactionAssocier)
   
-    _mq.transmettreTransactionFormattee(
-      transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
-    )
-    .catch(err=>{
-      console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
-      debug("ERROR media.genererPreviewImage Erreur association conversions d'image message %O", message)
-    })
+    // _mq.transmettreTransactionFormattee(
+    //   transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
+    // )
+    // .catch(err=>{
+    //   console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
+    //   debug("ERROR media.genererPreviewImage Erreur association conversions d'image message %O", message)
+    // })
 
     // Probleme - transcodage video ici bloque la Q de traitement des images
     // // Conversion videos 240p en mp4 et vp9
@@ -365,7 +365,7 @@ async function _traiterCommandeTranscodage(message) {
   try {
     debug("_traiterCommandeTranscodage fichier temporaire: %s", fichierDechiffre)
 
-    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, message)
+    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, message, _storeConsignation)
       .catch(err=>{
         console.error("media._traiterCommandeTranscodage ERROR %s: %O", message.fuuid, err)
       })
