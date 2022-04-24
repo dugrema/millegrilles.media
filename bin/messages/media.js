@@ -4,7 +4,6 @@ const { traiterCommandeTranscodage } = require('../transformationsVideo')
 const transfertConsignation = require('../transfertConsignation')
 
 const urlServeurIndex = process.env.MG_ELASTICSEARCH_URL || 'http://elasticsearch:9200'
-const urlConsignationFichiers = process.env.MG_FICHIERS_URL || 'https://fichiers:443'
 
 const EXPIRATION_MESSAGE_DEFAUT = 15 * 60 * 1000,  // 15 minutes en millisec
       EXPIRATION_COMMANDE_TRANSCODAGE = 30 * 60 * 1000  // 30 minutes en millisec
@@ -14,15 +13,20 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
 
 // Variables globales
 var _mq = null,
-    _idmg = null
+    _idmg = null,
+    _storeConsignation = null  // injecte dans www
 
 function setMq(mq) {
   _mq = mq
   _idmg = mq.pki.idmg
   debug("IDMG RabbitMQ %s", this.idmg)
+}
 
+function setStoreConsignation(urlConsignationFichiers, mq, storeConsignation) {
   // Config upload consignation
-  transfertConsignation.setUrlServeurConsignation(urlConsignationFichiers, mq.pki)
+  _storeConsignation = storeConsignation
+  if(!_mq) setMq(mq)
+  transfertConsignation.init(urlConsignationFichiers, mq, storeConsignation)
 }
 
 // Appele lors d'une reconnexion MQ
@@ -373,4 +377,4 @@ async function recupererCle(hachageFichier, permission) {
   return {cleSymmetrique, metaCle, clesPubliques}
 }
 
-module.exports = {setMq, on_connecter, genererPreviewImage}
+module.exports = {setMq, setStoreConsignation, on_connecter, genererPreviewImage}

@@ -40,7 +40,7 @@ async function init(opts) {
   await amqpdao.connect(mqConnectionUrl)
 
   // Attacher les evenements, cles de routage
-  await initialiserRabbitMQ(amqpdao)
+  const {media} = await initialiserRabbitMQ(amqpdao)
 
   // Middleware, injecte l'instance
   const middleware = (req, res, next) => {
@@ -48,7 +48,7 @@ async function init(opts) {
     next()
   }
 
-  return {middleware, amqpdao}
+  return {middleware, amqpdao, messageHandler: media}
 }
 
 async function initialiserRabbitMQ(rabbitMQ) {
@@ -67,7 +67,7 @@ async function initialiserRabbitMQ(rabbitMQ) {
   // publication.init(rabbitMQ)
   // rabbitMQ.enregistrerListenerConnexion(publication)
 
-  return {rabbitMQ};
+  return {rabbitMQ, media};
 }
 
 module.exports = {init}

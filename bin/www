@@ -8,6 +8,8 @@ const logger = require('morgan')
 const redis = require("redis")
 const fs = require('fs')
 
+const backingStore = require('@dugrema/millegrilles.nodejs/src/fichiersTransfertBackingstore')
+
 const {initialiser: initialiserServer} = require('./server')
 const {initialiser: initialiserApp} = require('./app');
 const amqpdao = require('./amqpdao')
@@ -15,7 +17,8 @@ const amqpdao = require('./amqpdao')
 const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
       CERT_FILE = process.env.MG_MQ_CERTFILE,
       KEY_CA_FILE = process.env.MG_MQ_KEYFILE,
-      REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD
+      REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD,
+      URL_CONSIGNATION_FICHIERS = process.env.MG_FICHIERS_URL || 'https://fichiers:443'
 
 // Preparer certificats, mots de passe
 function chargerCredendials() {
@@ -54,10 +57,14 @@ async function init() {
   await redisClient.ping()
 
   // Connexion AMQ
-  const {amqpdao: instAmqpdao} = await amqpdao.init({redisClient})
+  const {amqpdao: instAmqpdao, messageHandler} = await amqpdao.init({redisClient})
   const idmg = instAmqpdao.pki.idmg
 
   debug("Initialisation serveur IDMG : %s", idmg)
+
+  const storeConsignation = backingStore.configurerThreadPutFichiersConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao)
+  // Injecter dans media
+  messageHandler.setStoreConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao, storeConsignation)
 
   const middleware = [
     logger('dev'),
@@ -65,11 +72,12 @@ async function init() {
       req.amqpdao = instAmqpdao
       req.rabbitMQ = instAmqpdao
       req.idmg = idmg
+      req.storeConsignation = storeConsignation
       next()
     }
   ]
 
-  const root = await initialiserApp({middleware, mq: instAmqpdao})
+  const root = await initialiserApp(instAmqpdao, {middleware})
   const server = initialiserServer(root)
 
   // Hook pour un health check regulier (surtout pour connexion MQ)

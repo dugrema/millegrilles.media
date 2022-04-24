@@ -14,14 +14,21 @@ const {getDecipherPipe4fuuid, creerOutputstreamChiffrage} = require('./cryptoUti
 
 const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
       ACTION_SAUVEGARDERCLE = 'sauvegarderCle',
-      UPLOAD_TAILLE_BLOCK = 5 * 1024 * 1024  // 5 MB
+      UPLOAD_TAILLE_BLOCK = 5 * 1024 * 1024  // 5 MB,
+      PATH_MEDIA_STAGING = '/var/opt/millegrilles/consignation/staging/media'
 
 var _urlServeurConsignation = null,
-    _httpsAgent = null
+    _httpsAgent = null,
+    _storeConsignation = null
 
-function setUrlServeurConsignation(url, pki) {
-  _urlServeurConsignation = url
+function init(urlServeurConsignation, amqpdao, storeConsignation) {
+  debug("Initialiser transfertConsignation avec url %s", urlServeurConsignation)
+  
+  _urlServeurConsignation = new URL(''+urlServeurConsignation).href  // Cleanup URL
 
+  _storeConsignation = storeConsignation
+
+  const pki = amqpdao.pki
   // Configurer httpsAgent avec les certificats/cles
   _httpsAgent = new https.Agent({
     rejectUnauthorized: true,
@@ -29,13 +36,14 @@ function setUrlServeurConsignation(url, pki) {
     cert: pki.chainePEM,
     key: pki.cle,
   })
+
 }
 
 // Download et dechiffre un fichier protege pour traitement local
 async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
 
   const url = new URL(_urlServeurConsignation)
-  url.pathname = '/fichiers_transfert/' + hachage_bytes
+  url.pathname = path.join('/fichiers_transfert', hachage_bytes)
   debug("Url download fichier : %O", url)
 
   const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
@@ -60,7 +68,7 @@ async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
 
 // Chiffre et upload un fichier cree localement
 // Supprime les fichiers source et chiffres
-async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificateurs_document) {
+async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificateurs_document, transactionContenu, backingStore) {
   // debug("Upload fichier traite : %s", pathFichier)
   // debug("CLES PUBLIQUES : %O", clesPubliques)
   const pathStr = pathFichier.path || pathFichier
@@ -70,8 +78,8 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
   const url = new URL(_urlServeurConsignation)
   try {
     const readStream = fs.createReadStream(pathStr)
-    url.pathname = '/fichiers_transfert/' + uuidCorrelation + '/0'
-    debug("Url upload fichier : %O", url)
+    //url.pathname = '/fichiers_transfert/' + uuidCorrelation + '/0'
+    //debug("Url upload fichier : %O", url)
 
     // Creer stream chiffrage
     const infoCertCa = {cert: mq.pki.caForge, fingerprint: mq.pki.fingerprintCa}
@@ -96,6 +104,7 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
             while(dataBuffer.length > UPLOAD_TAILLE_BLOCK) {
               const buffer = Uint8Array.from(dataBuffer.slice(0, UPLOAD_TAILLE_BLOCK))
               // debug("UPLOAD DATA %s bytes position %s", buffer.length, position)
+              //await backingStore.stagingPut(buffer, uuidCorrelation, position, {PATH_STAGING: PATH_MEDIA_STAGING})
               await putAxios(url, uuidCorrelation, position, buffer)
               position += buffer.length
               dataBuffer = dataBuffer.slice(UPLOAD_TAILLE_BLOCK)
@@ -116,6 +125,8 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
             const buffer = Uint8Array.from(dataBuffer)
             // debug("DATA BUFFER UPLOAD position %s Uint8 Array: %O", position, buffer)
             await putAxios(url, uuidCorrelation, position, buffer)
+            //await backingStore.stagingPut(buffer, uuidCorrelation, position, {PATH_STAGING: PATH_MEDIA_STAGING})
+                // uuidCorrelation, position, buffer
           }
           resolve()
         } catch(err) {
@@ -149,6 +160,9 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
     debug("Commande maitre des cles signee : %O", commandeMaitrecles)
 
     const commandePost = { cles: commandeMaitrecles }
+    //await backingStore.stagingReady(mq, transactionContenu, commandeMaitrecles, correlation, {PATH_STAGING: PATH_MEDIA_STAGING})
+      //uuidCorrelation, commandeMaitrecles, {PATH_STAGING: PATH_MEDIA_STAGING})
+
     const reponsePost = await axios({
       method: 'POST',
       httpsAgent: _httpsAgent,
@@ -163,7 +177,8 @@ async function uploaderFichierTraite(mq, pathFichier, clesPubliques, identificat
   } catch(e) {
     debug("Erreur upload fichier traite %s, DELETE tmp serveur. Erreur : %O", uuidCorrelation, e)
     url.pathname = '/fichiers_transfert/' + uuidCorrelation
-    //await axios({method: 'DELETE', httpsAgent: _httpsAgent, url: url.href})
+    //await backingStore.stagingDelete(uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
+    await axios({method: 'DELETE', httpsAgent: _httpsAgent, url: url.href})
     throw e  // Rethrow
   } finally {
     // Supprimer fichier temporaire
@@ -217,4 +232,4 @@ async function dechiffrerStream(stream, cleFichier, pathDestination) {
   return promiseTraitement
 }
 
-module.exports = {setUrlServeurConsignation, downloaderFichierProtege, uploaderFichierTraite}
+module.exports = {init, downloaderFichierProtege, uploaderFichierTraite}
