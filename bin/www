@@ -18,7 +18,8 @@ const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
       CERT_FILE = process.env.MG_MQ_CERTFILE,
       KEY_CA_FILE = process.env.MG_MQ_KEYFILE,
       REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD,
-      URL_CONSIGNATION_FICHIERS = process.env.MG_CONSIGNATION_URL || 'https://fichiers:444/fichiers_transfert'
+      URL_CONSIGNATION_FICHIERS = process.env.MG_CONSIGNATION_URL || 'https://fichiers:444/fichiers_transfert',
+      PATH_STAGING = process.env.PATH_STAGING || '/var/opt/millegrilles/consignation/staging/media'
 
 // Preparer certificats, mots de passe
 function chargerCredendials() {
@@ -62,7 +63,7 @@ async function init() {
 
   debug("Initialisation serveur IDMG : %s", idmg)
 
-  backingStore.configurerThreadPutFichiersConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao)
+  backingStore.configurerThreadPutFichiersConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao, {PATH_STAGING})
   // Injecter dans media
   messageHandler.setStoreConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao, backingStore)
 
