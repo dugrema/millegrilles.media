@@ -18,7 +18,7 @@ const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
       CERT_FILE = process.env.MG_MQ_CERTFILE,
       KEY_CA_FILE = process.env.MG_MQ_KEYFILE,
       REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD,
-      URL_CONSIGNATION_FICHIERS = process.env.MG_FICHIERS_URL || 'https://fichiers:443'
+      URL_CONSIGNATION_FICHIERS = process.env.MG_CONSIGNATION_URL || 'https://fichiers:444/fichiers_transfert'
 
 // Preparer certificats, mots de passe
 function chargerCredendials() {
@@ -62,9 +62,9 @@ async function init() {
 
   debug("Initialisation serveur IDMG : %s", idmg)
 
-  const storeConsignation = backingStore.configurerThreadPutFichiersConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao)
+  backingStore.configurerThreadPutFichiersConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao)
   // Injecter dans media
-  messageHandler.setStoreConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao, storeConsignation)
+  messageHandler.setStoreConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao, backingStore)
 
   const middleware = [
     logger('dev'),
