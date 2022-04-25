@@ -111,8 +111,13 @@ async function genererPreviewImage(message) {
   debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
 
   // Downloader et dechiffrer le fichier
-  const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
-    hachageFichier, mimetype, cleFichier)
+  try {
+    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+      hachageFichier, mimetype, cleFichier)
+  } catch(err) {
+    debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
+    return {ok: false, err: ''+err}
+  }
 
   const {clesPubliques} = cleFichier
   var resultatConversion = null
@@ -277,8 +282,13 @@ async function genererPreviewVideo(message) {
   const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
   // Downloader et dechiffrer le fichier
-  const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
-    hachageFichier, mimetype, cleFichier)
+  try {
+    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+      hachageFichier, mimetype, cleFichier)
+  } catch(err) {
+    debug("genererPreviewVideo Erreur download fichier avec downloaderFichierProtege : %O", err)
+    return {ok: false, err: ''+err}
+  }
 
   // Transmettre transaction preview
   // const domaineActionAssocierPreview = 'GrosFichiers.associerPreview'
@@ -359,8 +369,13 @@ async function _traiterCommandeTranscodage(message) {
   debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", hachageFichier, informationCle)
 
   // Downloader et dechiffrer le fichier
-  const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
-    hachageFichier, mimetype, cleFichier)
+  try {
+    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+      hachageFichier, mimetype, cleFichier)
+  } catch(err) {
+    debug("_traiterCommandeTranscodage Erreur download fichier avec downloaderFichierProtege : %O", err)
+    return {ok: false, err: ''+err}
+  }
 
   try {
     debug("_traiterCommandeTranscodage fichier temporaire: %s", fichierDechiffre)
@@ -392,8 +407,13 @@ async function _indexerDocumentContenu(message) {
   // const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
   // Downloader et dechiffrer le fichier
-  const {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
-    fuuid, mimetype, cleFichier)
+  try {
+    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+      fuuid, mimetype, cleFichier)
+  } catch(err) {
+    debug("_indexerDocumentContenu Erreur download fichier avec downloaderFichierProtege : %O", err)
+    return {ok: false, err: ''+err}
+  }
 
   try {
     debug("Fichier dechiffre pour indexation : %s", fichierDechiffre)

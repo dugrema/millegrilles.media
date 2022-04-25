@@ -313,9 +313,13 @@ async function dechiffrerStream(stream, cleFichier, pathDestination) {
       resolve()
     });
     decipherPipe.writer.on('error', err=>{
-      debug("Erreur : %O", err)
+      debug("dechiffrerStream Erreur ecriture : %O", err)
       reject(err)
     });
+    decipherPipe.reader.on('error', err=>{
+      debug("dechiffrerStream Erreur lecture : %O", err)
+      reject(err)
+    })
   })
 
   // Pipe dechiffrage -> writer
