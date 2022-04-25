@@ -30,9 +30,12 @@ function init(urlServeurConsignation, amqpdao, storeConsignation) {
 
   const pki = amqpdao.pki
   // Configurer httpsAgent avec les certificats/cles
+  // Note: pas de verif CA, la destination peut etre un serveur public 
+  //       (Host Gator, Amazon, CloudFlare, etc.). C'est safe, le contenu 
+  //       est chiffre et la cle est separee et signee.
   _httpsAgent = new https.Agent({
-    rejectUnauthorized: true,
-    ca: pki.ca,
+    rejectUnauthorized: false,
+    // ca: pki.ca,
     cert: pki.chainePEM,
     key: pki.cle,
   })
