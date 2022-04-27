@@ -127,7 +127,11 @@ async function genererPreviewImage(message) {
       _mq, fichierDechiffre, message, {clesPubliques, fuuid: hachageFichier})
     debug("Fin traitement thumbnails/posters, resultat : %O", resultatConversion)
   } finally {
-    cleanup()  // Nettoyer fichier dechiffre temporaire
+    // Note: pour pdf, on utilise autoclean (indexation survient en meme temps)
+    if(mimetype !== 'application/pdf') {
+      // Nettoyer fichier dechiffre temporaire
+      cleanup().catch(err=>console.debug("Erreur suppression fichier dechiffre %s : %O", hachageFichier, err))
+    }
   }
 
   const {nbFrames, conversions} = resultatConversion
@@ -340,7 +344,8 @@ async function genererPreviewVideo(message) {
     //   .catch(err=>console.error("media._traiterCommandeTranscodage ERROR webm %s: %O", message.fuuid, err))
 
   } finally {
-    cleanup()  // Supprimer fichier dechiffre temporaire
+    // maintenant autoclean
+    // cleanup()  // Supprimer fichier dechiffre temporaire
   }
 
 }
@@ -385,7 +390,8 @@ async function _traiterCommandeTranscodage(message) {
         console.error("media._traiterCommandeTranscodage ERROR %s: %O", message.fuuid, err)
       })
   } finally {
-    if(cleanup) cleanup()
+    // maintenant autoclean
+    //if(cleanup) cleanup()
   }
 }
 
@@ -431,7 +437,8 @@ async function _indexerDocumentContenu(message) {
       {action: 'confirmerFichierIndexe', ajouterCertificat: true, nowait: true}
     )
   } finally {
-    if(cleanup) cleanup()
+    // Autoclean
+    //if(cleanup) cleanup()
   }
 }
 

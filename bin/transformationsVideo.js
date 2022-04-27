@@ -439,7 +439,8 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       debug("Transaction transcoder video : %O", transactionAssocierVideo)
 
     } finally {
-      fichierOutputTmp.cleanup().catch(err=>{debug("Err cleanup fichier video tmp (OK) : %O", err)})
+      // maintenant autoclean
+      // fichierOutputTmp.cleanup().catch(err=>{debug("Err cleanup fichier video tmp (OK) : %O", err)})
     }
 
     await storeConsignation.stagingReady(mq, transactionAssocierVideo, commandeMaitrecles, uuidCorrelation)

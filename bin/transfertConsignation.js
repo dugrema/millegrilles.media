@@ -3,10 +3,13 @@ const debug = require('debug')('millegrilles:transfertConsignation')
 const axios = require('axios')
 const https = require('https')
 const fs = require('fs')
-const tmp = require('tmp-promise')
+const fsPromises = require('fs/promises')
+// const tmp = require('tmp-promise')
 const {v4: uuidv4} = require('uuid')
 // const FormData = require('form-data')
 const path = require('path')
+
+const readdirp = require('readdirp')
 
 const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
 
@@ -15,11 +18,15 @@ const {getDecipherPipe4fuuid, creerOutputstreamChiffrage} = require('./cryptoUti
 const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
       ACTION_SAUVEGARDERCLE = 'sauvegarderCle',
       UPLOAD_TAILLE_BLOCK = 5 * 1024 * 1024  // 5 MB,
-      PATH_MEDIA_STAGING = '/var/opt/millegrilles/consignation/staging/media'
+      PATH_MEDIA_STAGING = '/var/opt/millegrilles/consignation/staging/media',
+      PATH_MEDIA_DECHIFFRE_STAGING = '/var/opt/millegrilles/consignation/staging/mediaDechiffre'
+
+const downloadCache = {}
 
 var _urlServeurConsignation = null,
     _httpsAgent = null,
-    _storeConsignation = null
+    _storeConsignation = null,
+    _intervalEntretien = setInterval(entretien, 1 * 60000)
 
 function init(urlServeurConsignation, amqpdao, storeConsignation) {
   debug("Initialiser transfertConsignation avec url %s", urlServeurConsignation)
@@ -27,6 +34,9 @@ function init(urlServeurConsignation, amqpdao, storeConsignation) {
   _urlServeurConsignation = new URL(''+urlServeurConsignation).href  // Cleanup URL
 
   _storeConsignation = storeConsignation
+
+  fsPromises.mkdir(PATH_MEDIA_STAGING, {recursive: true}).catch(err=>console.error("ERROR Erreur mkdir %s", PATH_MEDIA_STAGING))
+  fsPromises.mkdir(PATH_MEDIA_DECHIFFRE_STAGING, {recursive: true}).catch(err=>console.error("ERROR Erreur mkdir %s", PATH_MEDIA_DECHIFFRE_STAGING))
 
   const pki = amqpdao.pki
   // Configurer httpsAgent avec les certificats/cles
@@ -42,31 +52,136 @@ function init(urlServeurConsignation, amqpdao, storeConsignation) {
 
 }
 
+function entretien() {
+  debug("run Entretien")
+  cleanupStagingDechiffre()
+    .catch(err=>console.error("ERROR transfertConsignation.entretien Erreur cleanupStagingDechiffre : %O", err))
+}
+
+async function cleanupStagingDechiffre() {
+  debug("Entretien cleanupStagingDechiffre")
+  const EXPIRATION_DECHIFFRE = 30 * 60000
+  const dateCourante = new Date().getTime(),
+        dateExpiree = dateCourante - EXPIRATION_DECHIFFRE
+  
+  for await (const entry of readdirp(PATH_MEDIA_DECHIFFRE_STAGING, {type: 'files', alwaysStat: true})) {
+    const { basename, fullPath, stats } = entry
+    debug("Entry fichier staging dechiffre : %s", fullPath)
+    const fichierParse = path.parse(basename)
+    const hachage_bytes = fichierParse.name
+    const { mtimeMs } = stats
+    if(!downloadCache[hachage_bytes] && mtimeMs < dateExpiree) {
+      debug("cleanupStagingDechiffre Suppression fichier dechifre expire : %s", basename)
+      try {
+        await fsPromises.rm(fullPath)
+      } catch(err) {
+        debug("cleanupStagingDechiffre Erreur suppression fichier expire %s : %O", fullPath, err)
+      }
+    }
+  }
+
+}
+
 // Download et dechiffre un fichier protege pour traitement local
 async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
 
-  const url = new URL(''+_urlServeurConsignation)
-  url.pathname = path.join(url.pathname, hachage_bytes)
-  debug("Url download fichier : %O", url)
+  let downloadCacheFichier = getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier)
 
-  const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
+  const pathFichier = await downloadCacheFichier.ready
 
-  const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
-  const decryptedPath = tmpDecrypted.path
-  debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
+  return { path: pathFichier, cleanup: downloadCacheFichier.clean, cacheEntry: downloadCacheFichier }
 
-  const reponseFichier = await axios({
-    method: 'GET',
-    url: url.href,
-    httpsAgent: _httpsAgent,
-    responseType: 'stream',
-    timeout: 7500,
-  })
+  // const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
+  // const decryptedPath = tmpDecrypted.path
+  // debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
 
-  debug("Reponse download fichier : %O", reponseFichier.status)
-  await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
+  // const reponseFichier = await axios({
+  //   method: 'GET',
+  //   url: url.href,
+  //   httpsAgent: _httpsAgent,
+  //   responseType: 'stream',
+  //   timeout: 7500,
+  // })
 
-  return tmpDecrypted
+  // debug("Reponse download fichier : %O", reponseFichier.status)
+  // await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
+
+  // return tmpDecrypted
+}
+
+function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier) {
+  let downloadCacheFichier = downloadCache[hachage_bytes]
+  if(!downloadCacheFichier) {
+    // const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
+    // const decryptedPath = tmpDecrypted.path
+
+    const url = new URL(''+_urlServeurConsignation)
+    url.pathname = path.join(url.pathname, hachage_bytes)
+    debug("Url download fichier : %O", url)
+  
+    const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
+  
+    const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + '.' + extension)
+    debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
+
+    downloadCacheFichier = {
+      creation: new Date(),
+      hachage_bytes,
+      decryptedPath,
+      ready: null,    // Promise, resolve quand fichier prete (err sinon)
+      clean: null,    // Fonction qui supprime le fichier dechiffre
+      timeout: null,  // timeout qui va appeler cleanup(), doit etre resette/cleare si le fichier est utilise
+    }
+    downloadCache[hachage_bytes] = downloadCacheFichier
+    
+    downloadCacheFichier.clean = () => {
+      delete downloadCache[hachage_bytes]
+      return fsPromises.rm(decryptedPath)  // function pour nettoyer le fichier
+    }
+
+    // Lancer le download (promise)
+    downloadCacheFichier.ready = new Promise(async (resolve, reject) => {
+      try {
+        const reponseFichier = await axios({
+          method: 'GET',
+          url: url.href,
+          httpsAgent: _httpsAgent,
+          responseType: 'stream',
+          timeout: 7500,
+        })
+        debug("Reponse download fichier : %O", reponseFichier.status)
+        await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
+
+        // Creer un timer de cleanup automatique
+        downloadCacheFichier.timeout = setTimeout(()=>{
+          downloadCacheFichier.clean()
+            .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
+        }, 5 * 60000)  // 5 minutes
+
+        resolve(decryptedPath)
+
+      } catch(err) {
+        debug("Erreur download fichier %s : %O", hachage_bytes, err)
+        downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
+        delete downloadCache[hachage_bytes]
+        return reject(err)
+      }
+    })
+  }
+
+  downloadCacheFichier.lastAccess = new Date()
+
+  if(downloadCacheFichier.timeout) {
+    // Reset le timer de cleanup automatique
+    clearTimeout(downloadCacheFichier.timeout)
+
+    downloadCacheFichier.timeout = setTimeout(()=>{
+      downloadCacheFichier.clean()
+        .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
+    }, 5 * 60000)  // 5 minutes
+  }
+
+  return downloadCacheFichier
 }
 
 // Chiffre et upload un fichier cree localement

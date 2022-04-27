@@ -45,7 +45,7 @@ async function genererPosterVideo(sourcePath, opts) {
   } catch(err) {
     console.error("ERROR transformationImages.genererPosterVideo Erreur creation thumbnail/poster video : %O", err)
   } finally {
-    tmpFile.cleanup()
+    // tmpFile.cleanup()  // Maintenant autoclean
   }
 
 }
