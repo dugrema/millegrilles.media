@@ -19,14 +19,16 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
       ACTION_SAUVEGARDERCLE = 'sauvegarderCle',
       UPLOAD_TAILLE_BLOCK = 5 * 1024 * 1024  // 5 MB,
       PATH_MEDIA_STAGING = '/var/opt/millegrilles/consignation/staging/media',
-      PATH_MEDIA_DECHIFFRE_STAGING = '/var/opt/millegrilles/consignation/staging/mediaDechiffre'
+      PATH_MEDIA_DECHIFFRE_STAGING = '/var/opt/millegrilles/consignation/staging/mediaDechiffre',
+      EXPIRATION_DECHIFFRE = 30 * 60000,
+      INTERVALLE_ENTRETIEN = 5 * 60000
 
 const downloadCache = {}
 
 var _urlServeurConsignation = null,
     _httpsAgent = null,
     _storeConsignation = null,
-    _intervalEntretien = setInterval(entretien, 1 * 60000)
+    _intervalEntretien = setInterval(entretien, INTERVALLE_ENTRETIEN)
 
 function init(urlServeurConsignation, amqpdao, storeConsignation) {
   debug("Initialiser transfertConsignation avec url %s", urlServeurConsignation)
@@ -60,7 +62,6 @@ function entretien() {
 
 async function cleanupStagingDechiffre() {
   debug("Entretien cleanupStagingDechiffre")
-  const EXPIRATION_DECHIFFRE = 30 * 60000
   const dateCourante = new Date().getTime(),
         dateExpiree = dateCourante - EXPIRATION_DECHIFFRE
   
@@ -84,37 +85,14 @@ async function cleanupStagingDechiffre() {
 
 // Download et dechiffre un fichier protege pour traitement local
 async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
-
   let downloadCacheFichier = getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier)
-
   const pathFichier = await downloadCacheFichier.ready
-
   return { path: pathFichier, cleanup: downloadCacheFichier.clean, cacheEntry: downloadCacheFichier }
-
-  // const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
-  // const decryptedPath = tmpDecrypted.path
-  // debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
-
-  // const reponseFichier = await axios({
-  //   method: 'GET',
-  //   url: url.href,
-  //   httpsAgent: _httpsAgent,
-  //   responseType: 'stream',
-  //   timeout: 7500,
-  // })
-
-  // debug("Reponse download fichier : %O", reponseFichier.status)
-  // await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
-
-  // return tmpDecrypted
 }
 
 function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier) {
   let downloadCacheFichier = downloadCache[hachage_bytes]
   if(!downloadCacheFichier) {
-    // const tmpDecrypted = await tmp.file({ mode: 0o600, postfix: '.' + extension })
-    // const decryptedPath = tmpDecrypted.path
-
     const url = new URL(''+_urlServeurConsignation)
     url.pathname = path.join(url.pathname, hachage_bytes)
     debug("Url download fichier : %O", url)
@@ -131,12 +109,24 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier) {
       ready: null,    // Promise, resolve quand fichier prete (err sinon)
       clean: null,    // Fonction qui supprime le fichier dechiffre
       timeout: null,  // timeout qui va appeler cleanup(), doit etre resette/cleare si le fichier est utilise
+      activerTimer: null,  // Activer timer
     }
     downloadCache[hachage_bytes] = downloadCacheFichier
     
     downloadCacheFichier.clean = () => {
       delete downloadCache[hachage_bytes]
       return fsPromises.rm(decryptedPath)  // function pour nettoyer le fichier
+    }
+    
+    downloadCacheFichier.activerTimer = delai => {
+      delai = delai || EXPIRATION_DECHIFFRE
+
+      if(downloadCacheFichier.timeout) clearTimeout(downloadCacheFichier.timeout)
+
+      downloadCacheFichier.timeout = setTimeout(()=>{
+        downloadCacheFichier.clean()
+          .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
+      }, delai)
     }
 
     // Lancer le download (promise)
@@ -153,10 +143,7 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier) {
         await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
 
         // Creer un timer de cleanup automatique
-        downloadCacheFichier.timeout = setTimeout(()=>{
-          downloadCacheFichier.clean()
-            .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
-        }, 5 * 60000)  // 5 minutes
+        downloadCacheFichier.activerTimer()
 
         resolve(decryptedPath)
 
@@ -172,13 +159,7 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier) {
   downloadCacheFichier.lastAccess = new Date()
 
   if(downloadCacheFichier.timeout) {
-    // Reset le timer de cleanup automatique
-    clearTimeout(downloadCacheFichier.timeout)
-
-    downloadCacheFichier.timeout = setTimeout(()=>{
-      downloadCacheFichier.clean()
-        .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
-    }, 5 * 60000)  // 5 minutes
+    downloadCacheFichier.activerTimer()  // Reset le timer
   }
 
   return downloadCacheFichier
