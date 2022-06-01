@@ -3,11 +3,11 @@ FROM docker.maceroc.com/nodejsmedia:16_7
 # Create app directory
 WORKDIR /usr/src/app
 
-# Volume pour le staging des fichiers uploades via coupdoeil
+# Volume pour le staging des fichiers uploades
 VOLUME /var/opt/millegrilles
 
 ENV PORT=443 \
-    HOST=fichiers \
+    HOST=media \
     NODE_ENV=production \
     SERVER_TYPE=https \
     MG_MQ_URL=amqps://mq:5673 \
