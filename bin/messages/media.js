@@ -451,7 +451,11 @@ async function recupererCle(hachageFichier, permission) {
   // Demander cles publiques pour rechiffrage
   const reponseClesPubliques = await _mq.transmettreRequete(
     'MaitreDesCles', {}, {action: 'certMaitreDesCles', ajouterCertificat: true})
-  const clesPubliques = [reponseClesPubliques.certificat, [_mq.pki.ca]]
+  debug("Recuperer cle : maitre des cles = %O", reponseClesPubliques)
+
+  if(reponseClesPubliques.ok === false || !reponseClesPubliques.certificat) {
+    throw new Error("Erreur chargement reference maitre des cles")
+  }  const clesPubliques = [reponseClesPubliques.certificat]
 
   // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
   const domaine = 'MaitreDesCles',
