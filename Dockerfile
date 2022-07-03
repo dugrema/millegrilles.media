@@ -1,4 +1,4 @@
-FROM docker.maceroc.com/nodejsmedia:16_7
+FROM docker.maceroc.com/nodejsmedia:16_8
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -18,7 +18,8 @@ ENV PORT=443 \
     MG_MQ_KEYFILE=/run/secrets/key.pem \
     MG_MQ_CAFILE=/run/secrets/millegrille.cert.pem \
     WEB_CERT=/run/secrets/cert.pem \
-    WEB_KEY=/run/secrets/key.pem
+    WEB_KEY=/run/secrets/key.pem \
+    MG_CONSIGNATION_URL=https://fichiers:443/fichiers_transfert
 
 EXPOSE 443
 

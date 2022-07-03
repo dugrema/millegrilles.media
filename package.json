@@ -1,6 +1,6 @@
 {
   "name": "millegrilles.media",
-  "version": "2022.3.0",
+  "version": "2022.4.0",
   "private": true,
   "scripts": {
     "start": "node ./bin/www",
@@ -9,7 +9,7 @@
     "dev": "export $(cat .env.development .env.local | grep -v ^\\# | xargs) && npm start"
   },
   "dependencies": {
-    "@dugrema/millegrilles.nodejs": "github:dugrema/millegrilles.nodejs#2022.3",
+    "@dugrema/millegrilles.nodejs": "github:dugrema/millegrilles.nodejs#2022.4",
     "fluent-ffmpeg": "^2.1.2",
     "form-data": "^4.0.0",
     "imagemagick": "^0.1.3",
@@ -18,7 +18,7 @@
     "tmp-promise": "^3.0.3"
   },
   "peerDependencies": {
-    "@dugrema/millegrilles.utiljs": "github:dugrema/millegrilles.utiljs#2022.3",
+    "@dugrema/millegrilles.utiljs": "github:dugrema/millegrilles.utiljs#2022.4",
     "@dugrema/node-forge": "github:dugrema/forge#ed25519",
     "axios": "^0",
     "debug": "~4",
