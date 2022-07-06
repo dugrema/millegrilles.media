@@ -221,6 +221,7 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
       stopFct = transcodageVideo.stop
       await transcodageVideo.promise // Attendre fin
       ok = true
+      debug("Passe 1 terminee pour %s", input)
 
       ok = false
       passe = 2  // Pour progressCb
@@ -228,6 +229,7 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
       stopFct = transcodageVideo.stop
       await transcodageVideo.promise // Attendre fin
       ok = true
+      debug("Passe 2 terminee pour %s", input)
 
     } finally {
       if(!ok && stopFct) stopFct()  // Forcer l'arret du processus
