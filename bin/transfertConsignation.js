@@ -204,51 +204,10 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
     const chiffrageStream = await creerOutputstreamChiffrage(clesPubliques, identificateurs_document, 'GrosFichiers', infoCertCa)
     readStream.pipe(chiffrageStream)
 
-    // const form = new FormData()
-    // form.append("fichier", readStream, "fichier.jpg")
-
-    let dataBuffer = [],
-        position = 0
-
-    await new Promise(async (resolve, reject)=>{
-
-      chiffrageStream.on('data', async data => {
-        dataBuffer = [...dataBuffer, ...data]
-
-        if(dataBuffer.length > UPLOAD_TAILLE_BLOCK) {
-          // Upload split
-          try {
-            chiffrageStream.pause()
-            while(dataBuffer.length > UPLOAD_TAILLE_BLOCK) {
-              const buffer = Uint8Array.from(dataBuffer.slice(0, UPLOAD_TAILLE_BLOCK))
-              await _storeConsignation.stagingPut(buffer, uuidCorrelation, position, {PATH_STAGING: PATH_MEDIA_STAGING})
-              position += buffer.length
-              dataBuffer = dataBuffer.slice(UPLOAD_TAILLE_BLOCK)
-            }
-            chiffrageStream.resume()
-          } catch(err) {
-            chiffrageStream.destroy([err])
-            reject()
-          }
-        }
-      })
-
-      chiffrageStream.on('error', err => reject(err))
-
-      chiffrageStream.on('end', async () => {
-        try {
-          if(dataBuffer.length > 0) {
-            const buffer = Uint8Array.from(dataBuffer)
-            await _storeConsignation.stagingPut(buffer, uuidCorrelation, position, {PATH_STAGING: PATH_MEDIA_STAGING})
-          }
-          resolve()
-        } catch(err) {
-          reject(err)
-        }
-      })
-
-      chiffrageStream.read()  // Lancer la lecture
-    })
+    await _storeConsignation.stagingStream(
+      chiffrageStream, uuidCorrelation, 
+      {TAILLE_SPLIT: UPLOAD_TAILLE_BLOCK, PATH_STAGING: PATH_MEDIA_STAGING}
+    )
 
     // Signer commande maitre des cles
     var commandeMaitrecles = chiffrageStream.commandeMaitredescles
