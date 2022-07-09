@@ -1,7 +1,8 @@
 const debug = require('debug')('millegrilles:messages:media')
 const traitementMedia = require('../traitementMedia.js')
 const { traiterCommandeTranscodage } = require('../transformationsVideo')
-const transfertConsignation = require('../transfertConsignation')
+// const transfertConsignation = require('../transfertConsignation')
+const { recupererCle } = require('../pki')
 
 const urlServeurIndex = process.env.MG_ELASTICSEARCH_URL || 'http://elasticsearch:9200'
 
@@ -15,7 +16,8 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
 // Variables globales
 var _mq = null,
     _idmg = null,
-    _storeConsignation = null  // injecte dans www
+    _storeConsignation = null  // injecte dans www,
+    _transfertConsignation = null
 
 function setMq(mq) {
   _mq = mq
@@ -23,12 +25,13 @@ function setMq(mq) {
   debug("IDMG RabbitMQ %s", this.idmg)
 }
 
-function setStoreConsignation(urlConsignationFichiers, mq, storeConsignation) {
+function setStoreConsignation(mq, storeConsignation, transfertConsignation) {
   // Config upload consignation
   debug("Set store consignation : %O", storeConsignation)
   _storeConsignation = storeConsignation
   if(!_mq) setMq(mq)
-  transfertConsignation.init(urlConsignationFichiers, mq, storeConsignation)
+  //transfertConsignation.init(urlConsignationFichiers, mq, storeConsignation)
+  _transfertConsignation = transfertConsignation
 }
 
 // Appele lors d'une reconnexion MQ
@@ -107,12 +110,12 @@ async function genererPreviewImage(message) {
     hachageFichier = message.version_courante.hachage || message.version_courante.fuuid
     mimetype = mimetype || message.version_courante.mimetype
   }
-  const cleFichier = await recupererCle(hachageFichier, message)
+  const cleFichier = await recupererCle(_mq, hachageFichier)
   debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
 
   // Downloader et dechiffrer le fichier
   try {
-    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+    var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
       hachageFichier, mimetype, cleFichier)
   } catch(err) {
     debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
@@ -180,7 +183,7 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
   {
     const thumb = {...thumbnails.thumb.informationImage},
           small = {...thumbnails.small.informationImage}
-    const {uuidCorrelation, commandeMaitrecles, hachage, taille} = await transfertConsignation.stagerFichier(
+    const {uuidCorrelation, commandeMaitrecles, hachage, taille} = await _transfertConsignation.stagerFichier(
       _mq, thumbnails.small.fichierTmp, clesPubliques, identificateurs_document, _storeConsignation)
 
     try {
@@ -216,7 +219,7 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
     images[cle] = resultat
 
     // Chiffrer et conserver image dans staging local pour upload vers consignation
-    const {uuidCorrelation, commandeMaitrecles, hachage, taille} = await transfertConsignation.stagerFichier(
+    const {uuidCorrelation, commandeMaitrecles, hachage, taille} = await _transfertConsignation.stagerFichier(
       _mq, conversion.fichierTmp, clesPubliques, identificateurs_document, _storeConsignation)
     try {
       resultat.hachage = hachage
@@ -242,7 +245,7 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
 
   //   if(conversion.fichierTmp) {
   //     // Chiffrer et uploader le fichier tmp
-  //     const {hachage, taille} = await transfertConsignation.uploaderFichierTraite(
+  //     const {hachage, taille} = await _transfertConsignation.uploaderFichierTraite(
   //       _mq, conversion.fichierTmp, clesPubliques, identificateurs_document)
   //     // Ajouter nouveau hachage (fuuid fichier converti)
   //     resultat.hachage = hachage
@@ -282,12 +285,12 @@ async function genererPreviewVideo(message) {
     console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
     return
   }
-  const cleFichier = await recupererCle(hachageFichier, message)
+  const cleFichier = await recupererCle(_mq, hachageFichier)
   const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
   // Downloader et dechiffrer le fichier
   try {
-    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+    var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
       hachageFichier, mimetype, cleFichier)
   } catch(err) {
     debug("genererPreviewVideo Erreur download fichier avec downloaderFichierProtege : %O", err)
@@ -368,14 +371,14 @@ async function _traiterCommandeTranscodage(message) {
     console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
     return
   }
-  const cleFichier = await recupererCle(hachageFichier, message)
+  const cleFichier = await recupererCle(_mq, hachageFichier)
   const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
   debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", hachageFichier, informationCle)
 
   // Downloader et dechiffrer le fichier
   try {
-    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+    var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
       hachageFichier, mimetype, cleFichier)
   } catch(err) {
     debug("_traiterCommandeTranscodage Erreur download fichier avec downloaderFichierProtege : %O", err)
@@ -409,12 +412,12 @@ async function _indexerDocumentContenu(message) {
 
   debug("Indexer %s type %s", fuuid, mimetype)
 
-  const cleFichier = await recupererCle(fuuid, message)
+  const cleFichier = await recupererCle(_mq, fuuid)
   // const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
   // Downloader et dechiffrer le fichier
   try {
-    var {path: fichierDechiffre, cleanup} = await transfertConsignation.downloaderFichierProtege(
+    var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
       fuuid, mimetype, cleFichier)
   } catch(err) {
     debug("_indexerDocumentContenu Erreur download fichier avec downloaderFichierProtege : %O", err)
@@ -440,41 +443,6 @@ async function _indexerDocumentContenu(message) {
     // Autoclean
     //if(cleanup) cleanup()
   }
-}
-
-async function recupererCle(hachageFichier, permission) {
-  const liste_hachage_bytes = [hachageFichier]
-  // Note: permission n'est plus requise - le certificat media donne acces a toutes les cles (domaine=GrosFichiers)
-  // Le message peut avoir une permission attachee
-  // if(permission.permission) permission = permission.permission
-
-  // Demander cles publiques pour rechiffrage
-  const reponseClesPubliques = await _mq.transmettreRequete(
-    'MaitreDesCles', {}, {action: 'certMaitreDesCles', ajouterCertificat: true})
-  debug("Recuperer cle : maitre des cles = %O", reponseClesPubliques)
-
-  if(reponseClesPubliques.ok === false || !reponseClesPubliques.certificat) {
-    throw new Error("Erreur chargement reference maitre des cles")
-  }  const clesPubliques = [reponseClesPubliques.certificat]
-
-  // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
-  const domaine = 'MaitreDesCles',
-        action = 'dechiffrage'
-  const requete = {liste_hachage_bytes}  //, permission}
-  debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
-  const reponseCle = await _mq.transmettreRequete(domaine, requete, {action, ajouterCertificat: true, decoder: true})
-  debug("Reponse requete dechiffrage : %O", reponseCle)
-  if(reponseCle.acces !== '1.permis') {
-    return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}
-  }
-  debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
-
-  // Dechiffrer cle recue
-  const metaCle = reponseCle.cles[hachageFichier]
-  const cleChiffree = metaCle.cle
-  const cleSymmetrique = await _mq.pki.decrypterAsymetrique(cleChiffree)
-
-  return {cleSymmetrique, metaCle, clesPubliques}
 }
 
 module.exports = {setMq, setStoreConsignation, on_connecter, genererPreviewImage}

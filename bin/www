@@ -9,6 +9,7 @@ const redis = require("redis")
 const fs = require('fs')
 
 const backingStore = require('@dugrema/millegrilles.nodejs/src/fichiersTransfertBackingstore')
+const transfertConsignation = require('./transfertConsignation')
 
 const {initialiser: initialiserServer} = require('./server')
 const {initialiser: initialiserApp} = require('./app');
@@ -65,7 +66,8 @@ async function init() {
 
   backingStore.configurerThreadPutFichiersConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao, {PATH_STAGING})
   // Injecter dans media
-  messageHandler.setStoreConsignation(URL_CONSIGNATION_FICHIERS, instAmqpdao, backingStore)
+  transfertConsignation.init(URL_CONSIGNATION_FICHIERS, instAmqpdao, backingStore)
+  messageHandler.setStoreConsignation(instAmqpdao, backingStore, transfertConsignation)
 
   const middleware = [
     logger('dev'),
@@ -73,7 +75,8 @@ async function init() {
       req.amqpdao = instAmqpdao
       req.rabbitMQ = instAmqpdao
       req.idmg = idmg
-      req.storeConsignation = storeConsignation
+      req.storeConsignation = backingStore
+      req.transfertConsignation = transfertConsignation
       next()
     }
   ]

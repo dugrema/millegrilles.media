@@ -84,13 +84,30 @@ async function cleanupStagingDechiffre() {
 }
 
 // Download et dechiffre un fichier protege pour traitement local
-async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier) {
-  let downloadCacheFichier = getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier)
+async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier, opts) {
+  opts = opts || {}
+  let downloadCacheFichier = getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts)
   const pathFichier = await downloadCacheFichier.ready
   return { path: pathFichier, cleanup: downloadCacheFichier.clean, cacheEntry: downloadCacheFichier }
 }
 
-function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier) {
+function getCacheItem(hachage_bytes) {
+  let downloadCacheFichier = downloadCache[hachage_bytes]
+  
+  // Touch
+  if(downloadCacheFichier) {
+    downloadCacheFichier.lastAccess = new Date()
+    if(downloadCacheFichier.timeout) {
+      downloadCacheFichier.activerTimer()  // Reset le timer
+    }
+  }
+
+  return downloadCacheFichier
+}
+
+function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
+  opts = opts || {}
+
   let downloadCacheFichier = downloadCache[hachage_bytes]
   if(!downloadCacheFichier) {
     const url = new URL(''+_urlServeurConsignation)
@@ -105,12 +122,16 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier) {
     downloadCacheFichier = {
       creation: new Date(),
       hachage_bytes,
+      mimetype,
       decryptedPath,
       ready: null,    // Promise, resolve quand fichier prete (err sinon)
       clean: null,    // Fonction qui supprime le fichier dechiffre
       timeout: null,  // timeout qui va appeler cleanup(), doit etre resette/cleare si le fichier est utilise
       activerTimer: null,  // Activer timer
     }
+
+    if(opts.metadata) downloadCacheFichier.metadata = opts.metadata
+
     downloadCache[hachage_bytes] = downloadCacheFichier
     
     downloadCacheFichier.clean = () => {
@@ -424,4 +445,4 @@ async function dechiffrerStream(stream, cleFichier, pathDestination) {
   return promiseTraitement
 }
 
-module.exports = {init, downloaderFichierProtege, stagerFichier, /*uploaderFichierTraite*/}
+module.exports = {init, downloaderFichierProtege, stagerFichier, getCacheItem, getDownloadCacheFichier}
