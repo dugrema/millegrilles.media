@@ -35,7 +35,6 @@ async function downloadVideoPrive(req, res, next) {
 
     debug("Verifier l'acces est autorise %s", req.url)
 
-
     // Demander une permission de dechiffrage et stager le fichier.
     try {
         let cacheEntry = req.transfertConsignation.getCacheItem(fuuid)
@@ -65,8 +64,17 @@ async function downloadVideoPrive(req, res, next) {
 
             const infoVideo = Object.values(fichierMetadata.version_courante.video).filter(item=>item.fuuid_video===fuuid).pop()
             debug("Info video %s\n%O", fuuid, infoVideo)
+            if(!infoVideo) {
+                debug("Aucuns videos associes")
+                return res.sendStatus(404)
+            }
 
             const mimetype = infoVideo.mimetype
+            if(!mimetype.startsWith('video/')) {
+                debug("Le mimetype n'est pas video")
+                return res.sendStatus(403)
+            }
+
             let paramsGrosFichiers = {nom: fichierMetadata.nom}
 
             // Stager le fichier dechiffre
@@ -79,7 +87,7 @@ async function downloadVideoPrive(req, res, next) {
                 await cacheEntry.ready
             } catch(err) {
                 debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
-                return {ok: false, err: ''+err}
+                return res.sendStatus(500)
             }
         } else {
             debug("Cache HIT sur %s dechiffre", fuuid)

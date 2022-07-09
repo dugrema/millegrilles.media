@@ -51,7 +51,7 @@ function verificationCertificatSSL(req, res, next) {
   if ( process.env.DISABLE_SSL_AUTH ) {
     const mq = req.amqpdao
     req.autorisationMillegrille = {
-      idmg: mq.pki.idmg, secure: true, protege: true, prive: true, public: true, roles: ['media']
+      idmg: mq.pki.idmg, secure: true, protege: true, prive: true, public: true, roles: ['nginx']
     }
     debug("Fake autorisation (flag: DISABLE_SSL_AUTH)")
     return next()
@@ -72,6 +72,12 @@ function verificationCertificatSSL(req, res, next) {
   if(!nginxVerified) {
       debug("Echec de verification NGINX, acces refuse");
       return res.sendStatus(403)  // Access denied
+  }
+
+  if(headers.verified === 'INTERNAL') {
+    debug("verificationCertificatSSL Un module interne a fait un set internal, acces OK")
+    //TODO - Verifier droit d'acces
+    return next()
   }
 
   // Extraire certificat DER
