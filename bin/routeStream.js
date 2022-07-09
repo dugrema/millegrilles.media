@@ -123,7 +123,7 @@ async function downloadVideoPrive(req, res, next) {
     
         const range = req.headers.range
         if(range) {
-            console.debug("Range request : %s, taille fichier %s", range, res.stat.size)
+            debug("Range request : %s, taille fichier %s", range, res.stat.size)
             const infoRange = readRangeHeader(range, res.stat.size)
             res.range = infoRange
         }
