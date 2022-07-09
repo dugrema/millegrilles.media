@@ -2,14 +2,14 @@ const debug = require('debug')('millegrilles:fichiers:cryptoUtils')
 const fs = require('fs');
 const crypto = require('crypto');
 const {Transform} = require('stream')
-const multibase = require('multibase')
+// const multibase = require('multibase')
 // const { creerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.common/lib/chiffrage')
 const { preparerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.nodejs/src/chiffrage')
 const { base64 } = require('multiformats/bases/base64');
-const { dechiffrerCle } = require('@dugrema/millegrilles.utiljs/src/chiffrage.ed25519');
+// const { dechiffrerCle } = require('@dugrema/millegrilles.utiljs/src/chiffrage.ed25519');
 
-const AES_ALGORITHM = 'aes-256-cbc';  // Meme algorithme utilise sur MG en Python
-const RSA_ALGORITHM = 'RSA-OAEP';
+// const AES_ALGORITHM = 'aes-256-cbc';  // Meme algorithme utilise sur MG en Python
+// const RSA_ALGORITHM = 'RSA-OAEP';
 
 async function getDecipherPipe4fuuid(cleSecrete, iv, opts) {
   if(!opts) opts = {}
@@ -58,7 +58,7 @@ async function creerOutputstreamChiffrage(certificatsPem, identificateurs_docume
 
   const clePubliqueCa = certCaInfo.cert.publicKey.publicKeyBytes
   const cipherInfo = await preparerCipher({clePubliqueEd25519: clePubliqueCa})
-  console.debug("!!! CipherInfo: %O", cipherInfo)
+  // console.debug("!!! CipherInfo: %O", cipherInfo)
   const cipher = cipherInfo.cipher,
         iv = base64.encode(cipherInfo.iv)
 
@@ -74,7 +74,7 @@ async function creerOutputstreamChiffrage(certificatsPem, identificateurs_docume
 
   transformStream.on('end', async _ =>{
     const infoChiffrage = await cipher.finalize()
-    console.debug("!!! InfoChiffrage : %O", infoChiffrage)
+    // console.debug("!!! InfoChiffrage : %O", infoChiffrage)
     // const meta = {iv: cipherInfo.iv, ...infoChiffrage.meta}
 
     // Preparer commande MaitreDesCles
