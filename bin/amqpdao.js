@@ -32,8 +32,12 @@ async function init(opts) {
   // const nomsQCustom = ['image', 'video', 'publication']
   const qCustom = {
     'image': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/image'},
-    'video': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/video'},
-    'indexation': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation'},
+
+    // transcodage peut prendre plus de 30 minutes (ACK timeout)
+    'video': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/video', preAck: true},
+
+    // indexation peut prendre plus de 30 minutes (ACK timeout)
+    'indexation': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation', preAck: true},
   }
   const amqpdao = new MilleGrillesAmqpDAO(instPki, {qCustom})
   const mqConnectionUrl = process.env.MG_MQ_URL;

@@ -31,9 +31,10 @@ async function downloadVideoPrive(req, res, next) {
     res.fuuid = fuuid
     debug("downloadVideoPrive Fuuid : %s", fuuid)
 
-    // Le fichier est chiffre mais le niveau d'acces de l'usager ne supporte
-    debug("Verifier si permission d'acces en mode prive pour video %s", req.url)
     var mq = req.amqpdao
+
+    debug("Verifier l'acces est autorise %s", req.url)
+
 
     // Demander une permission de dechiffrage et stager le fichier.
     try {
@@ -47,11 +48,26 @@ async function downloadVideoPrive(req, res, next) {
             debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
 
             // Recuperer information sur le GrosFichier (pour mimetype, nom du fichier)
-            //TODO
-            let paramsGrosFichiers = {
-                nom: 'monvideo.MOV'
+            const requete = {fuuids_documents: [fuuid]}
+            const reponseFichiers = await mq.transmettreRequete(
+                'GrosFichiers', requete, 
+                {action: 'documentsParFuuid', exchange: '2.prive', attacherCertificat: true}
+            )
+            if(!reponseFichiers || reponseFichiers.ok === false) {
+                debug("Erreur dans reponse fichiers : %O", reponseFichiers)
+                return {ok: false, err: `fuuid inconnu ou err : ${fuuid}`}
             }
-            let mimetype = 'video/webm'
+
+            debug("Reponse info fichiers : %O", reponseFichiers)
+
+            const fichierMetadata = reponseFichiers.fichiers.pop()
+            debug("Fichier metadata: %O", fichierMetadata)
+
+            const infoVideo = Object.values(fichierMetadata.version_courante.video).filter(item=>item.fuuid_video===fuuid).pop()
+            debug("Info video %s\n%O", fuuid, infoVideo)
+
+            const mimetype = infoVideo.mimetype
+            let paramsGrosFichiers = {nom: fichierMetadata.nom}
 
             // Stager le fichier dechiffre
             try {
@@ -69,32 +85,15 @@ async function downloadVideoPrive(req, res, next) {
             debug("Cache HIT sur %s dechiffre", fuuid)
         }
 
-        debug("Fichier a streamer : %O", cacheItem)
+        debug("Fichier a streamer : %O", cacheEntry)
         const pathFichierDechiffre = cacheEntry.decryptedPath,
-              metadata = cacheItem.metadata,
-              mimetype = cacheItem.mimetype
+              metadata = cacheEntry.metadata,
+              mimetype = cacheEntry.mimetype
 
         const statFichier = await fsPromises.stat(pathFichierDechiffre)
         debug("Stat fichier %s :\n%O", pathFichierDechiffre, statFichier)
 
-        // ----
-        // const infoStream = await creerStreamDechiffrage(mq, req.params.fuuid, {prive: true})
-
-        // debug("Information stream : %O", infoStream)
-
-        // const permission = infoStream.permission || {}
-        // if(infoStream.acces === '0.refuse' || !permission.mimetype.startsWith('video/')) {
-        //     debug("Permission d'acces refuse pour video en mode prive pour %s", req.url)
-        //     return res.sendStatus(403)  // Acces refuse
-        // }
-
-        // // Ajouter information de dechiffrage pour la reponse
-        // res.decipherStream = infoStream.decipherStream
-        // res.permission = infoStream.permission
         res.fuuid = fuuid
-
-        // const fuuidEffectif = infoStream.fuuidEffectif
-        // ----
 
         // Preparer le fichier dechiffre dans repertoire de staging
         // const infoFichierEffectif = await stagingPublic(pathConsignation, fuuidEffectif, infoStream)

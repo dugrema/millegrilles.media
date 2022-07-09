@@ -262,8 +262,7 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
   audioOpts = audioOpts || {}  // Non-utilise pour passe 1
   opts = opts || {}
 
-  const nbThreads = opts.threads || 12,   // 4 = 1 core
-        nbCores = opts.cores || Math.floor(nbThreads/4)
+  const nbThreads = opts.threads || 4
 
   const videoBitrate = videoOpts.videoBitrate,
         height = videoOpts.height,
@@ -301,8 +300,8 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
       .outputOptions([
         '-pass', '2',
         '-threads', ''+nbThreads,
-        '-slices', ''+nbThreads,
-        '-cpu-used', ''+nbCores,
+        // '-slices', ''+nbThreads,
+        //'-cpu-used', ''+nbCores,
         '-movflags', 'faststart',
         '-metadata', 'COM.APPLE.QUICKTIME.LOCATION.ISO6709=',
         '-metadata', 'location=',
