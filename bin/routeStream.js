@@ -19,6 +19,7 @@ function route(opts) {
     const bodyParserInstance = bodyParser.urlencoded({ extended: false })
  
     router.get('/stream_transfert/:fuuid', downloadVideoPrive, pipeReponse)
+    router.get('/stream_transfert/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
   
     return router
 }
