@@ -116,7 +116,7 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
   
     const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
   
-    const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + '.' + extension)
+    const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + extension)
     debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
 
     downloadCacheFichier = {
@@ -155,54 +155,66 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
 
       try {
         await fsPromises.stat(decryptedPath)
+        debug("getDownloadCacheFichier Le fichier %s existe deja, on l'utilise", decryptedPath)
       } catch(err) {
         debug("getDownloadCacheFichier Err : %O", err)
         debug("Le fichier %s n'existe pas, on le download", decryptedPath)
 
         const decryptedWorkPath = decryptedPath + '.work'
         try {
-          let writeStream = null
           try {
             // Verifier si le fichier work existe
-            writeStream = fs.createWriteStream(decryptedWorkPath)
-          } catch(err) {
+            debug("Verifier si le fichier %s existe", decryptedWorkPath)
+            await fsPromises.stat(decryptedWorkPath)
             debug("Le fichier de download existe deja, on va attendre que le fichier soit libere")
             await new Promise((resolve, reject) => {
               try {
-                const timeout = setTimeout(()=>reject('timeout'), 60000)
+                const timeout = setTimeout(()=>{
+                  // Abandonner le caching du fichier (echec)
+                  delete downloadCache[hachage_bytes]
+                  reject('timeout')
+                }, 60000)
                 fs.watchFile(decryptedWorkPath, (curr, prev) => {
                   debug("getDownloadCacheFichier curr : %O, prev: %O", curr, prev)
-                  clearTimeout(timeout)
-                  return resolve()
+                  if(curr.mtimeMs === 0) {  // Fichier est supprime
+                    clearTimeout(timeout)
+                    return resolve()
+                  }
                 })
               } catch(err) {
                 return reject(err)
               }
             })
+          } catch(err) {
+            debug("Le fichier de download n'existe pas, on commence un nouveau download")
+            const reponseFichier = await axios({
+              method: 'GET',
+              url: url.href,
+              httpsAgent: _httpsAgent,
+              responseType: 'stream',
+              timeout: 7500,
+            })
+    
+            try {
+              debug("Reponse download fichier : %O", reponseFichier.status)
+              const writeStream = fs.createWriteStream(decryptedWorkPath)
+              await dechiffrerStream(reponseFichier.data, cleFichier, writeStream)
+    
+              await fsPromises.rename(decryptedWorkPath, decryptedPath)
+            } finally {
+              fsPromises.rm(decryptedWorkPath).catch(err => { 
+                // Ok, fichier avait deja ete traite
+              })
+            }
+          } finally {
+            fs.unwatchFile(decryptedWorkPath)
           }
-  
-          const reponseFichier = await axios({
-            method: 'GET',
-            url: url.href,
-            httpsAgent: _httpsAgent,
-            responseType: 'stream',
-            timeout: 7500,
-          })
-  
-          debug("Reponse download fichier : %O", reponseFichier.status)
-          await dechiffrerStream(reponseFichier.data, cleFichier, writeStream)
-
-          await fsPromises.rename(decryptedWorkPath, decryptedPath)
   
         } catch(err) {
           debug("Erreur download fichier %s : %O", hachage_bytes, err)
           downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
           delete downloadCache[hachage_bytes]
           return reject(err)
-        } finally {
-          fsPromises.rm(decryptedWorkPath).catch(err => { 
-            // Ok, fichier avait deja ete traite
-          })
         }
 
       } // fin catch, download/dechiffrage fichier
