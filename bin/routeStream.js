@@ -126,6 +126,7 @@ async function downloadVideoPrive(req, res, next) {
         if(range) {
             debug("Range request : %s, taille fichier %s", range, res.stat.size)
             const infoRange = readRangeHeader(range, res.stat.size)
+            debug("Range retourne : %O", infoRange)
             res.range = infoRange
         }
 
@@ -186,16 +187,24 @@ function readRangeHeader(range, totalLength) {
     * Output: [null, null, 200, null]
     */
 
-    if (range == null || range.length == 0)
-        return null;
+    if (range === null || range.length == 0) {
+        debug("readRangeHeader %O => NULL", range)
+        return null
+    }
 
     var array = range.split(/bytes=([0-9]*)-([0-9]*)/);
     var start = parseInt(array[1]);
     var end = parseInt(array[2]);
+
+    if(!isNaN(end) && end > totalLength) {
+        end = totalLength - 1
+    }
+
     var result = {
         Start: isNaN(start) ? 0 : start,
-        End: isNaN(end) ? (totalLength - 1) : end
+        End: end,
     }
+    return result
 }
 
 module.exports = route
