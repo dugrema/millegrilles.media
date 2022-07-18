@@ -3,12 +3,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs')
 const fsPromises = require('fs/promises')
-const bodyParser = require('body-parser')
 
-// const {PathConsignation} = require('../util/traitementFichier')
-// const {getDecipherPipe4fuuid} = require('../util/cryptoUtils')
-// const uploadFichier = require('./uploadFichier')
-// const { stagingFichier: stagingPublic, creerStreamDechiffrage } = require('../util/publicStaging')
 const { recupererCle } = require('./pki')
 
 const STAGING_FILE_TIMEOUT_MSEC = 300000
@@ -16,8 +11,6 @@ const STAGING_FILE_TIMEOUT_MSEC = 300000
 function route(opts) {
     const router = express.Router();
   
-    const bodyParserInstance = bodyParser.urlencoded({ extended: false })
- 
     router.get('/stream_transfert/:fuuid', downloadVideoPrive, pipeReponse)
     router.get('/stream_transfert/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
   
@@ -110,7 +103,7 @@ async function downloadVideoPrive(req, res, next) {
         res.filePath = pathFichierDechiffre
 
         // Ajouter information de header pour slicing (HTTP 206)
-        res.setHeader('Content-Length', res.stat.size)
+        // res.setHeader('Content-Length', res.stat.size)
         res.setHeader('Accept-Ranges', 'bytes')
 
         // res.setHeader('Content-Length', res.tailleFichier)
@@ -128,6 +121,10 @@ async function downloadVideoPrive(req, res, next) {
             const infoRange = readRangeHeader(range, res.stat.size)
             debug("Range retourne : %O", infoRange)
             res.range = infoRange
+
+            res.setHeader('Content-Length', infoRange.End - infoRange.Start + 1)
+        } else {
+            res.setHeader('Content-Length', res.stat.size)
         }
 
     } catch(err) {
@@ -144,7 +141,6 @@ function pipeReponse(req, res) {
     const { range, filePath, fileRedirect, stat } = res
   
     if(range) {
-      // Implicitement un fichier 1.public, staging local
       var start = range.Start,
           end = range.End
   
@@ -162,6 +158,15 @@ function pipeReponse(req, res) {
   
       debug("Transmission range fichier %d a %d bytes (taille :%d) : %s", start, end, stat.size, filePath)
       const readStream = fs.createReadStream(filePath, { start: start, end: end })
+
+      let totalBytes = 0
+      readStream.on('data', chunk=>{
+        totalBytes += chunk.length
+      })
+      readStream.on('end', ()=>{
+        debug("!!! TOTAL BYTES : %d", totalBytes)
+      })
+
       res.status(206)
       readStream.pipe(res)
     } else if(fileRedirect) {
@@ -196,7 +201,7 @@ function readRangeHeader(range, totalLength) {
     var start = parseInt(array[1]);
     var end = parseInt(array[2]);
 
-    if(!isNaN(end) && end > totalLength) {
+    if(isNaN(end) || end > totalLength) {
         end = totalLength - 1
     }
 

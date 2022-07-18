@@ -152,21 +152,67 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
 
     // Lancer le download (promise)
     downloadCacheFichier.ready = new Promise(async (resolve, reject) => {
+
       try {
-        const reponseFichier = await axios({
-          method: 'GET',
-          url: url.href,
-          httpsAgent: _httpsAgent,
-          responseType: 'stream',
-          timeout: 7500,
-        })
-        debug("Reponse download fichier : %O", reponseFichier.status)
-        await dechiffrerStream(reponseFichier.data, cleFichier, decryptedPath)
+        await fsPromises.stat(decryptedPath)
+      } catch(err) {
+        debug("getDownloadCacheFichier Err : %O", err)
+        debug("Le fichier %s n'existe pas, on le download", decryptedPath)
+
+        const decryptedWorkPath = decryptedPath + '.work'
+        try {
+          let writeStream = null
+          try {
+            // Verifier si le fichier work existe
+            writeStream = fs.createWriteStream(decryptedWorkPath)
+          } catch(err) {
+            debug("Le fichier de download existe deja, on va attendre que le fichier soit libere")
+            await new Promise((resolve, reject) => {
+              try {
+                const timeout = setTimeout(()=>reject('timeout'), 60000)
+                fs.watchFile(decryptedWorkPath, (curr, prev) => {
+                  debug("getDownloadCacheFichier curr : %O, prev: %O", curr, prev)
+                  clearTimeout(timeout)
+                  return resolve()
+                })
+              } catch(err) {
+                return reject(err)
+              }
+            })
+          }
+  
+          const reponseFichier = await axios({
+            method: 'GET',
+            url: url.href,
+            httpsAgent: _httpsAgent,
+            responseType: 'stream',
+            timeout: 7500,
+          })
+  
+          debug("Reponse download fichier : %O", reponseFichier.status)
+          await dechiffrerStream(reponseFichier.data, cleFichier, writeStream)
+
+          await fsPromises.rename(decryptedWorkPath, decryptedPath)
+  
+        } catch(err) {
+          debug("Erreur download fichier %s : %O", hachage_bytes, err)
+          downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
+          delete downloadCache[hachage_bytes]
+          return reject(err)
+        } finally {
+          fsPromises.rm(decryptedWorkPath).catch(err => { 
+            // Ok, fichier avait deja ete traite
+          })
+        }
+
+      } // fin catch, download/dechiffrage fichier
+
+      try {
 
         // Creer un timer de cleanup automatique
         downloadCacheFichier.activerTimer()
 
-        resolve(decryptedPath)
+        return resolve(decryptedPath)
 
       } catch(err) {
         debug("Erreur download fichier %s : %O", hachage_bytes, err)
@@ -373,7 +419,7 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
 //   debug("Reponse put %s : %s", urlPosition.href, reponsePut.status)
 // }
 
-async function dechiffrerStream(stream, cleFichier, pathDestination) {
+async function dechiffrerStream(stream, cleFichier, writeStream) {
   const decipherPipe = await getDecipherPipe4fuuid(
     cleFichier.cleSymmetrique,
     cleFichier.metaCle.iv,
@@ -383,7 +429,7 @@ async function dechiffrerStream(stream, cleFichier, pathDestination) {
   // Pipe la reponse chiffree dans le dechiffreur
   stream.pipe(decipherPipe.reader)
 
-  let writeStream = fs.createWriteStream(pathDestination)
+  // let writeStream = fs.createWriteStream(pathDestination)
   const promiseTraitement = new Promise((resolve, reject)=>{
     decipherPipe.writer.on('end', ()=>{
       resolve()
