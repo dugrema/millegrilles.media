@@ -3,6 +3,7 @@ const fs = require('fs')
 const { MilleGrillesPKI, MilleGrillesAmqpDAO } = require('@dugrema/millegrilles.nodejs')
 
 const EXPIRATION_MESSAGE_DEFAUT = 30 * 60 * 1000  // 15 minutes en millisec
+const EXPIRATION_MESSAGE_VIDEO = 5 * 60 * 1000  // 5 minutes en millisec
 
 async function init(opts) {
   opts = opts || {}
@@ -34,7 +35,7 @@ async function init(opts) {
     'image': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/image'},
 
     // transcodage peut prendre plus de 30 minutes (ACK timeout)
-    'video': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/video', preAck: true},
+    'video': {ttl: EXPIRATION_MESSAGE_VIDEO, name: 'media/video', preAck: true},
 
     // indexation peut prendre plus de 30 minutes (ACK timeout)
     'indexation': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation', preAck: true},

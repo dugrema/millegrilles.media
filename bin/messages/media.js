@@ -45,7 +45,7 @@ function enregistrerChannel() {
   ['2.prive', '3.protege'].map(exchange=>{
     _mq.routingKeyManager.addRoutingKeyCallback(
       (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
-      ['commande.fichiers.transcoderVideo'],
+      ['commande.fichiers.jobConversionVideoDisponible'],
       {
         // operationLongue: true,
         qCustom: 'video',
@@ -361,25 +361,44 @@ async function _traiterCommandeTranscodage(message) {
     return
   }
 
-  debug("Traitement genererPreviewVideo : %O", message)
+  debug("_traiterCommandeTranscodage Traitement genererPreviewVideo : %O", message)
 
   // Transmettre demande cle et attendre retour sur l'autre Q (on bloque Q operations longues)
-  const versionCourante = message.version_courante || {},
-        hachageFichier = message.fuuid || message.hachage || message.fuuid_v_courante || versionCourante.fuuid || versionCourante.hachage,
-        mimetype = message.mimetype
-  if(!hachageFichier) {
-    console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
+  {
+    const fuuid = message.fuuid, 
+          cleVideo = message.cleVideo
+    const commandeGetJob = {fuuid, cle_video: cleVideo}
+    var reponseGetJob = await _mq.transmettreCommande(
+      'GrosFichiers', commandeGetJob, {action: 'getJobVideo', exchange: '2.prive', attacherCertificat: true})
+    
+    debug("_traiterCommandeTranscodage Reponse getJob : %O", reponseGetJob)
+
+    if(reponseGetJob.ok === false) {
+      debug("_traiterCommandeTranscodage Erreur demande job, abort : %O", reponseGetJob.err)
+      return {ok: false, err: ''+reponseGetJob.err}
+    } else if(reponseGetJob.ok === true && !reponseGetJob.fuuid) {
+      debug("_traiterCommandeTranscodage Aucune job disponible")
+      return {ok: true, message: 'Aucune job disponible'}
+    }
+
+  }
+
+  const fuuid = reponseGetJob.fuuid,
+        mimetype = reponseGetJob.mimetype
+  if(!fuuid) {
+    console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", reponseGetJob)
     return
   }
-  const cleFichier = await recupererCle(_mq, hachageFichier)
+
+  const cleFichier = await recupererCle(_mq, fuuid)
   const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
-  debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", hachageFichier, informationCle)
+  debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", fuuid, informationCle)
 
   // Downloader et dechiffrer le fichier
   try {
     var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
-      hachageFichier, mimetype, cleFichier)
+      fuuid, mimetype, cleFichier)
   } catch(err) {
     debug("_traiterCommandeTranscodage Erreur download fichier avec downloaderFichierProtege : %O", err)
     return {ok: false, err: ''+err}
@@ -388,9 +407,9 @@ async function _traiterCommandeTranscodage(message) {
   try {
     debug("_traiterCommandeTranscodage fichier temporaire: %s", fichierDechiffre)
 
-    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, message, _storeConsignation)
+    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, reponseGetJob, _storeConsignation)
       .catch(err=>{
-        console.error("media._traiterCommandeTranscodage ERROR %s: %O", message.fuuid, err)
+        console.error("media._traiterCommandeTranscodage ERROR %s: %O", fuuid, err)
       })
   } finally {
     // maintenant autoclean
