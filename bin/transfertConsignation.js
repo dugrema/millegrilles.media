@@ -114,9 +114,9 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
     url.pathname = path.join(url.pathname, hachage_bytes)
     debug("Url download fichier : %O", url)
   
-    const extension = MIMETYPE_EXT_MAP[mimetype] || '.bin'
+    const extension = MIMETYPE_EXT_MAP[mimetype] || 'bin'
   
-    const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + extension)
+    const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + '.' + extension)
     debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
 
     downloadCacheFichier = {
