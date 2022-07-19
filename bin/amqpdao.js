@@ -2,8 +2,8 @@ const debug = require('debug')('millegrilles:amqpdao')
 const fs = require('fs')
 const { MilleGrillesPKI, MilleGrillesAmqpDAO } = require('@dugrema/millegrilles.nodejs')
 
-const EXPIRATION_MESSAGE_DEFAUT = 30 * 60 * 1000  // 15 minutes en millisec
-const EXPIRATION_MESSAGE_VIDEO = 5 * 60 * 1000  // 5 minutes en millisec
+const EXPIRATION_MESSAGE_DEFAUT = 30 * 60 * 1000  // minutes en millisec
+const EXPIRATION_MESSAGE_VIDEO = 10 * 60 * 1000   // minutes en millisec
 
 async function init(opts) {
   opts = opts || {}
