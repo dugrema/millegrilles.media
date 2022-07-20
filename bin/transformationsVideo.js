@@ -399,10 +399,14 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     // Fonction de progres
     let lastUpdate = null, complet = false
     const progressCb = progress => { 
+      // debug("traiterCommandeTranscodage Progress update %s / %s;%s:%s : %O", fuuid, mimetype, height, videoBitrate, progress)
       if(progress && progress.force === true) {
         // Ok
       } else if(lastUpdate) {
-        if(!complet && progress.framesTotal && progress.frames && progress.framesTotal === progress.frames) {
+        if(complet && progress.frames < progress.framesTotal) {
+          complet = false  // Nouvelle passe, reset flag
+        } else if(!complet && progress.framesTotal === progress.frames && progress.framesTotal) {
+          // debug("traiterCommandeTranscodage Complete (passe %s, %s frames)", progress.passe, progress.framesTotal)
           complet = true  // On emet le message de fin une fois
         } else {
           const expiration = new Date().getTime() - CONST_INTERVALLE_UPDATE
@@ -411,7 +415,6 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       }
       lastUpdate = new Date().getTime()  // Reset
       progressUpdate(mq, {fuuid, mimetype, videoBitrate, height}, progress) 
-      debug("Progress update %s / %s;%s:%s : %O", fuuid, mimetype, height, videoBitrate, progress)
     }
 
     // Creer un factory d'input streams decipher
