@@ -6,6 +6,8 @@ const FFmpeg = require('fluent-ffmpeg')
 
 const transfertConsignation = require('./transfertConsignation')
 
+const CONST_INTERVALLE_UPDATE = 3 * 1000
+
 const PROFILS_TRANSCODAGE = {
   webm: {
     videoBitrate: 1000000,
@@ -395,7 +397,22 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`, {exchange: '2.prive'})
 
     // Fonction de progres
-    const progressCb = progress => { progressUpdate(mq, {fuuid, mimetype, videoBitrate, height}, progress) }
+    let lastUpdate = null, complet = false
+    const progressCb = progress => { 
+      if(progress && progress.force === true) {
+        // Ok
+      } else if(lastUpdate) {
+        if(!complet && progress.framesTotal && progress.frames && progress.framesTotal === progress.frames) {
+          complet = true  // On emet le message de fin une fois
+        } else {
+          const expiration = new Date().getTime() - CONST_INTERVALLE_UPDATE
+          if(lastUpdate > expiration) return
+        }
+      }
+      lastUpdate = new Date().getTime()  // Reset
+      progressUpdate(mq, {fuuid, mimetype, videoBitrate, height}, progress) 
+      debug("Progress update %s / %s;%s:%s : %O", fuuid, mimetype, height, videoBitrate, progress)
+    }
 
     // Creer un factory d'input streams decipher
     const inputStreamFactory = () => { return fs.createReadStream(fichierDechiffre) }
