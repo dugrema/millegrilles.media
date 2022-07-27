@@ -1,4 +1,4 @@
-const debug = require('debug')('millegrilles:fichiers:transformationsVideo')
+const debug = require('debug')('media:transformationsVideo')
 const fs = require('fs')
 const tmpPromises = require('tmp-promise')
 const path = require('path')
@@ -9,30 +9,61 @@ const transfertConsignation = require('./transfertConsignation')
 const CONST_INTERVALLE_UPDATE = 3 * 1000
 
 const PROFILS_TRANSCODAGE = {
-  webm: {
-    videoBitrate: 1000000,
-    height: 720,
-    videoCodec: 'libvpx-vp9',
-    audioCodec: 'libopus',
-    audioBitrate: '128k',
-    format: 'webm',
-    videoCodecName: 'vp9',
-  },
-  mp4: {
+  h264: {
+    qualityVideo: 30,
     videoBitrate: 250000,
-    height: 240,
+    height: 270,
     videoCodec: 'libx264',
     audioCodec: 'aac',
     audioBitrate: '64k',
     format: 'mp4',
     videoCodecName: 'h264',
-  }
+    doublePass: false,
+  },
+  vp9: {
+    qualityVideo: 30,
+    height: 360,
+    videoCodec: 'libvpx-vp9',
+    audioCodec: 'libopus',
+    audioBitrate: '128k',
+    format: 'webm',
+    videoCodecName: 'vp9',
+    doublePass: true,
+  },
+  hevc: {
+    qualityVideo: 30,
+    height: 360,
+    videoCodec: 'libx265',
+    audioCodec: 'eac3',
+    audioBitrate: '128k',
+    format: 'mp4',
+    videoCodecName: 'hevc',
+    doublePass: false,
+  },
+  // webm: {
+  //   videoBitrate: 1000000,
+  //   height: 720,
+  //   videoCodec: 'libvpx-vp9',
+  //   audioCodec: 'libopus',
+  //   audioBitrate: '128k',
+  //   format: 'webm',
+  //   videoCodecName: 'vp9',
+  // },
+  // mp4: {
+  //   videoBitrate: 250000,
+  //   height: 240,
+  //   videoCodec: 'libx264',
+  //   audioCodec: 'aac',
+  //   audioBitrate: '64k',
+  //   format: 'mp4',
+  //   videoCodecName: 'h264',
+  // }
 }
 
 async function probeVideo(input, opts) {
   opts = opts || {}
-  const maxHeight = opts.maxHeight || 720,
-        maxBitrate = opts.maxBitrate || 750000,
+  const maxHeight = opts.maxHeight || 360,
+        maxBitrate = opts.maxBitrate || 250000,
         utiliserTailleOriginale = opts.utiliserTailleOriginale || false
 
   const resultat = await new Promise((resolve, reject)=>{
@@ -64,11 +95,11 @@ async function probeVideo(input, opts) {
 
   let heightEncoding = height
   if(!utiliserTailleOriginale) {
-    heightEncoding = [2160, 1440, 1080, 720, 480, 360, 320, 240].filter(item=>{
+    heightEncoding = [1080, 720, 480, 360, 320, 240].filter(item=>{
       return item <= height && item <= maxHeight
-    }).shift() || 240
+    }).shift() || 270
   }
-  let bitRateEncoding = [8000000, 4000000, 3000000, 2000000, 1500000, 1000000, 500000, 250000].filter(item=>{
+  let bitRateEncoding = [2500000, 1600000, 1000000, 600000, 400000, 200000].filter(item=>{
     return item <= bitrate && item <= maxBitrate
   }).shift() || 250000
 
@@ -90,10 +121,12 @@ async function probeVideo(input, opts) {
 async function transcoderVideo(streamFactory, outputStream, opts) {
   if(!opts) opts = {}
 
-  var   videoBitrate = opts.videoBitrate || 250000
-        height = opts.height || 240
-        width = opts.width || 427,
-        utiliserTailleOriginale = opts.utiliserTailleOriginale || false
+  var   videoBitrate = opts.videoBitrate || 200000,
+        videoQuality = opts.qualityVideo,
+        height = opts.height || 270,
+        width = opts.width || 480,
+        utiliserTailleOriginale = opts.utiliserTailleOriginale || false,
+        doublePass = opts.doublePass===true?true:false
 
   const videoCodec = opts.videoCodec || 'libx264',
         audioCodec = opts.audioCodec || 'aac',
@@ -104,12 +137,12 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
   var input = streamFactory()
   var videoInfo = await probeVideo(input, {maxBitrate: videoBitrate, maxHeight: height, utiliserTailleOriginale})
   input.close()
-  videoBitrate = videoInfo.bitrate
+  videoBitrate = opts.videoBitrate?videoInfo.bitrate:null  // Bitrate null signifie variable selon quality
   height = videoInfo.height || height
   width = videoInfo.width
 
   // videoBitrate = '' + (videoBitrate / 1000) + 'k'
-  debug('Utilisation video bitrate : %s, format %dx%d\nInfo: %O', videoBitrate, width, height, videoInfo)
+  debug('Utilisation video quality %s, bitrate : %s, format %dx%d\nInfo: %O', videoQuality, videoBitrate, width, height, videoInfo)
 
   // Tenter transcodage avec un stream - fallback sur fichier direct
   // Va etre utilise avec un decipher sur fichiers .mgs2
@@ -117,7 +150,10 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
   input = streamFactory()  // Reset stream (utilise par probeVideo)
 
   var progressHook, framesTotal = videoInfo.nb_frames, framesCourant = 0
-  var passe = 1
+
+  let passe = 0
+
+  passe = 1
   if(progressCb) {
     progressHook = progress => {
       if(framesTotal) {
@@ -380,6 +416,9 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       fuuid = message.fuuid,
       mimetype = message.mimetype,
       videoBitrate = message.videoBitrate,
+      codecVideo = message.codecVideo,
+      codecAudio = message.codecAudio,
+      preset = message.preset,
       height = message.resolutionVideo || message.height,
       uuidCorrelationCleanup = null
 
@@ -511,16 +550,17 @@ function getProfilTranscodage(params) {
   // videoCodecName: 'vp9',
 
   // Verifier si on a toute l'information de transcodate inclus dans les params
-  switch(params.mimetype) {
-    case 'video/webm':
-      profil = {...PROFILS_TRANSCODAGE.webm, ...params}
+  switch(params.codecVideo) {
+    case 'vp9':
+      profil = {...PROFILS_TRANSCODAGE.vp9, ...params}
       break
-    case 'video/mp4':
-      profil = {...PROFILS_TRANSCODAGE.mp4, ...params}
+    case 'hevc':
+      profil = {...PROFILS_TRANSCODAGE.hevc, ...params}
+      break
+    default:
+      profil = {...PROFILS_TRANSCODAGE.h264, ...params}
       break
   }
-
-  // Note : le mimetype a deja inclus l'information de codecVideo (webm === VP9, mp4 === h264)
 
   // Mapping codec audio
   if(params.bitrateVideo) {
@@ -532,10 +572,10 @@ function getProfilTranscodage(params) {
   if(params.resolutionVideo) {
     profil.height = params.resolutionVideo
   }
-  if(params.codecAudio === 'aac') {
-    profil.audioCodec = 'aac'
-  } else if(params.codecAudio === 'opus') {
+  if(params.codecAudio === 'opus') {
     profil.audioCodec = 'libopus'
+  } else {
+    profil.audioCodec = params.codecAudio
   }
 
   return profil
