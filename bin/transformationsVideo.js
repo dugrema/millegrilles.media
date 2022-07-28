@@ -7,6 +7,7 @@ const FFmpeg = require('fluent-ffmpeg')
 const transfertConsignation = require('./transfertConsignation')
 
 const CONST_INTERVALLE_UPDATE = 3 * 1000
+const CONST_PASSE_1 = 1
 
 const PROFILS_TRANSCODAGE = {
   h264: {
@@ -62,6 +63,11 @@ const PROFILS_TRANSCODAGE = {
 
 async function probeVideo(input, opts) {
   opts = opts || {}
+
+  if(typeof(input) === 'string') {
+    input = fs.createReadStream(input)
+  }
+
   const maxHeight = opts.maxHeight || 360,
         maxBitrate = opts.maxBitrate || 250000,
         utiliserTailleOriginale = opts.utiliserTailleOriginale || false
@@ -118,11 +124,14 @@ async function probeVideo(input, opts) {
   }
 }
 
-async function transcoderVideo(streamFactory, outputStream, opts) {
+async function transcoderVideo(fichierInput, outputStream, opts) {
   if(!opts) opts = {}
+
+  debug("transcoderVideo opts : %O", opts)
 
   var   videoBitrate = opts.videoBitrate || 200000,
         videoQuality = opts.qualityVideo,
+        preset = opts.preset,
         height = opts.height || 270,
         width = opts.width || 480,
         utiliserTailleOriginale = opts.utiliserTailleOriginale || false,
@@ -134,26 +143,25 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
         format = opts.format || 'mp4',
         progressCb = opts.progressCb
 
-  var input = streamFactory()
-  var videoInfo = await probeVideo(input, {maxBitrate: videoBitrate, maxHeight: height, utiliserTailleOriginale})
-  input.close()
-  videoBitrate = opts.videoBitrate?videoInfo.bitrate:null  // Bitrate null signifie variable selon quality
-  height = videoInfo.height || height
-  width = videoInfo.width
+  const videoInfoOriginal = await probeVideo(fichierInput, {maxBitrate: videoBitrate, maxHeight: height, utiliserTailleOriginale})
+  videoBitrate = opts.videoBitrate?videoInfoOriginal.bitrate:null  // Bitrate null signifie variable selon quality
+  height = videoInfoOriginal.height || height
+  width = videoInfoOriginal.width
+
+  // S'assurer que width est pair (requis par certains codec comme HEVC)
+  if(width%2 !== 0) width = width - 1
 
   // videoBitrate = '' + (videoBitrate / 1000) + 'k'
-  debug('Utilisation video quality %s, bitrate : %s, format %dx%d\nInfo: %O', videoQuality, videoBitrate, width, height, videoInfo)
+  debug('Utilisation video quality %s, bitrate : %s, format %dx%d\nInfo: %O', videoQuality, videoBitrate, width, height, videoInfoOriginal)
 
   // Tenter transcodage avec un stream - fallback sur fichier direct
   // Va etre utilise avec un decipher sur fichiers .mgs2
-  var modeInputStream = true
-  input = streamFactory()  // Reset stream (utilise par probeVideo)
+  
+  let progressHook = null, 
+      framesTotal = videoInfoOriginal.nb_frames, 
+      framesCourant = 0,
+      passe = null
 
-  var progressHook, framesTotal = videoInfo.nb_frames, framesCourant = 0
-
-  let passe = 0
-
-  passe = 1
   if(progressCb) {
     progressHook = progress => {
       if(framesTotal) {
@@ -169,57 +177,21 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
   // Creer repertoire temporaire pour fichiers de log, outputfile
   const tmpDir = await tmpPromises.dir({unsafeCleanup: true})
 
-  // Passe 1
-  debug("Debut passe 1")
-  var fichierInputTmp = null  //, fichierOutputTmp = null
+  const videoOpts = { videoQuality, videoBitrate, height, width, videoCodec, preset }
+  const optsTranscodage = { progressCb: progressHook, tmpDir: tmpDir.path }
+  const audioOpts = {audioCodec, audioBitrate}
+
   try {
-    const videoOpts = { videoBitrate, height, width, videoCodec }
-    const optsTranscodage = {
-      progressCb: progressHook,
-      tmpDir: tmpDir.path,
+
+    if(doublePass) {
+      debug("Debut passe 1")
+      passe = 1
+      await passe1Video(fichierInput, tmpDir, videoOpts, optsTranscodage)
+      passe = 2  // Commencer la deuxieme passe
+      debug("Passe 1 terminee, debut passe 2")
     }
 
     let stopFct = null, ok = false  // Sert a arreter ffmpeg si probleme avec nodejs (e.g. CTRL-C/restart container)
-    try {
-      const transcodageVideo = transcoderPasse(1, input, null, videoOpts, null, optsTranscodage)
-      stopFct = transcodageVideo.stop
-      await transcodageVideo.promise // Attendre fin
-      ok = true
-    } catch(err) {
-      // Verifier si on a une erreur de streaming (e.g. video .mov n'est pas
-      // supporte en streaming)
-      const errMsg = err.message
-      if(errMsg.indexOf("ffmpeg exited with code 1") === -1) {
-        throw err  // Erreur non geree
-      }
-
-      debug("Echec parsing stream, dechiffrer dans un fichier temporaire et utiliser directement")
-      modeInputStream = false
-
-      // Copier le contenu du stream dans un fichier temporaire
-      input = path.join(tmpDir.path, 'input.dat')
-      fichierInputTmp = await extraireFichierTemporaire(input, streamFactory())
-      // input = fichierInputTmp.path
-      debug("Fichier temporaire input pret: %s", input)
-
-      ok = false
-      const transcodageVideo = transcoderPasse(1, input, null, videoOpts, null, optsTranscodage)
-      stopFct = transcodageVideo.stop
-      await transcodageVideo.promise // Attendre fin
-      ok = true
-
-    } finally {
-      if(!ok && stopFct) stopFct()  // Forcer l'arret du processus
-    }
-    debug("Passe 1 terminee, debut passe 2")
-
-    // Passe 2
-    passe = 2  // Pour progressCb
-    const audioOpts = {audioCodec, audioBitrate}
-    if(modeInputStream) {
-      // Reset inputstream
-      input = streamFactory()
-    }
 
     // Set nombre de frames trouves dans la passe 1 au besoin (sert au progress %)
     if(!framesTotal) framesTotal = framesCourant
@@ -231,48 +203,14 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
 
     try {
       ok = false
-      const transcodageVideo = transcoderPasse(2, input, destinationPath, videoOpts, audioOpts, optsTranscodage)
+      const transcodageVideo = transcoderPasse(passe, fichierInput, destinationPath, videoOpts, audioOpts, optsTranscodage)
       stopFct = transcodageVideo.stop
       await transcodageVideo.promise // Attendre fin
       ok = true
-    } catch(err) {
-      // Verifier si on a une erreur de streaming (e.g. video .mov n'est pas
-      // supporte en streaming)
-      const errMsg = err.message
-      if(errMsg.indexOf("ffmpeg exited with code 1") === -1) {
-        throw err  // Erreur non geree
-      }
-
-      debug("Echec parsing stream, dechiffrer dans un fichier temporaire et utiliser directement")
-      modeInputStream = false
-
-      // Copier le contenu du stream dans un fichier temporaire
-      input = path.join(tmpDir.path, 'input.dat')
-      fichierInputTmp = await extraireFichierTemporaire(input, streamFactory())
-      // input = fichierInputTmp.path
-      debug("Fichier temporaire input pret: %s, videoOps: %O", input, videoOpts)
-
-      // Recommencer passe 1 et faire passe 2
-      ok = false
-      passe = 1  // Pour progressCb
-      let transcodageVideo = transcoderPasse(1, input, null, videoOpts, null, optsTranscodage)
-      stopFct = transcodageVideo.stop
-      await transcodageVideo.promise // Attendre fin
-      ok = true
-      debug("Passe 1 terminee pour %s", input)
-
-      ok = false
-      passe = 2  // Pour progressCb
-      transcodageVideo = transcoderPasse(2, input, destinationPath, videoOpts, audioOpts, optsTranscodage)
-      stopFct = transcodageVideo.stop
-      await transcodageVideo.promise // Attendre fin
-      ok = true
-      debug("Passe 2 terminee pour %s", input)
-
     } finally {
       if(!ok && stopFct) stopFct()  // Forcer l'arret du processus
     }
-    debug("Passe 2 terminee, transferer le fichier output")
+    debug("Transcodage termine, transferer le fichier output")
 
     const outputFileReader = fs.createReadStream(destinationPath)
     const promiseOutput = new Promise((resolve, reject)=>{
@@ -295,17 +233,40 @@ async function transcoderVideo(streamFactory, outputStream, opts) {
   }
 }
 
+async function passe1Video(inputStream, tmpDir, videoOpts, optsTranscodage) {
+  // Passe 1
+  debug("Debut passe 1")
+
+  const optsTranscodagePasse1 = {...optsTranscodage, tmpDir: tmpDir.path}
+
+  let stopFct = null, ok = false  // Sert a arreter ffmpeg si probleme avec nodejs (e.g. CTRL-C/restart container)
+  try {
+    const transcodageVideo = transcoderPasse(CONST_PASSE_1, inputStream, null, videoOpts, null, optsTranscodagePasse1)
+    stopFct = transcodageVideo.stop
+    await transcodageVideo.promise // Attendre fin
+    ok = true
+  } finally {
+    if(!ok && stopFct) stopFct()  // Forcer l'arret du processus
+  }
+  debug("Passe 1 terminee")
+}
+
 function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, opts) {
   videoOpts = videoOpts || {}
   audioOpts = audioOpts || {}  // Non-utilise pour passe 1
   opts = opts || {}
+
+  debug("transcoderPasse (%s) destinationPath: %s\nvideoOpts: %O\naudioOpts: %O\nopts: %O", 
+        passe, destinationPath, videoOpts, audioOpts, opts)
 
   const nbThreads = opts.threads || 4
 
   const videoBitrate = videoOpts.videoBitrate,
         height = videoOpts.height,
         width = videoOpts.width || '?',
-        videoCodec = videoOpts.videoCodec
+        videoCodec = videoOpts.videoCodec,
+        preset = videoOpts.preset,
+        videoQuality = videoOpts.videoQuality
 
   const audioCodec = audioOpts.audioCodec,
         audioBitrate = audioOpts.audioBitrate
@@ -314,15 +275,24 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
         format = opts.format || 'mp4',
         tmpDir = opts.tmpDir || '/tmp'
 
-  const ffmpegProcessCmd = new FFmpeg(source, {niceness: 10})
-    .withVideoBitrate(''+Math.floor(videoBitrate/1000)+'k')
-    .withSize(''+ width + 'x' + height)
+  const sizeVideo = ''+ width + 'x' + height
+  // const sizeVideo = '?x' + height
+  debug("Size video : %s", sizeVideo)
+
+  const ffmpegProcessCmd = new FFmpeg(source, {niceness: 10, logger: console})
+    .withSize(sizeVideo)
     .videoCodec(videoCodec)
 
+  const inputOptions = []
+
+  debug("FFMPEG inputOptions: %O", inputOptions)
+  ffmpegProcessCmd.inputOptions(inputOptions)
+  
   var passlog = path.join(tmpDir, 'ffmpeg2pass')
   if(passe === 1) {
     // Passe 1, desactiver traitement stream audio
     ffmpegProcessCmd
+      //.noAudio()
       .outputOptions([
         '-an',
         '-f', 'null',
@@ -330,13 +300,9 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
         '-threads', ''+nbThreads,
         '-passlogfile', passlog
       ])
-  } else if(passe === 2) {
+  } else {
     debug("Audio info : %O, format %s", audioOpts, format)
-    ffmpegProcessCmd
-      .audioCodec(audioCodec)
-      .audioBitrate(audioBitrate)
-      .outputOptions([
-        '-pass', '2',
+    let outputOptions = [
         '-threads', ''+nbThreads,
         // '-slices', ''+nbThreads,
         //'-cpu-used', ''+nbCores,
@@ -344,9 +310,47 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
         '-metadata', 'COM.APPLE.QUICKTIME.LOCATION.ISO6709=',
         '-metadata', 'location=',
         '-metadata', 'location-eng=',
-        '-passlogfile', passlog])
-  } else {
-    throw new Error("Passe doit etre 1 ou 2 (passe=%O)", passe)
+    ]
+
+    if(preset) {
+      outputOptions.push('-preset')
+      outputOptions.push(preset)
+    }
+  
+    if(videoCodec === 'hevc') {
+      outputOptions.push('-tag:v')
+      outputOptions.push('hvc1')
+    }
+  
+    if(videoQuality) {
+      outputOptions.push('-crf')
+      outputOptions.push(''+videoQuality)
+      if(videoBitrate) {
+        const bitrate = ''+Math.floor(videoBitrate/1000)+'k'
+        debug("Video bitrate : %s avec crf %s", bitrate, videoQuality)
+        ffmpegProcessCmd.withVideoBitrate(bitrate)
+      } else if(videoCodec === 'vp9' || !videoOpts.videoBitrate) {
+        debug("Video bitrate : '0' pour VP9 avec crf %s", videoQuality)
+        ffmpegProcessCmd.withVideoBitrate('0')  // Flag requis pour bitrate variable
+      }
+    } else if(videoBitrate) {
+      const bitrate = ''+Math.floor(videoBitrate/1000)+'k'
+      debug("Video bitrate constant %s", bitrate)
+      ffmpegProcessCmd.withVideoBitrate(''+Math.floor(videoBitrate/1000)+'k')
+    }
+  
+    if(passe === 2) {
+      outputOptions = ['-pass', '2', ...outputOptions, '-passlogfile', passlog]
+    }
+
+    debug("FFMPEG audioCodec: %s, audioBitrate: %s, outputOptions : %O", audioCodec, audioBitrate, outputOptions)
+
+    const audioBitrateStr = Math.floor(audioBitrate / 1000) + 'k'
+
+    ffmpegProcessCmd
+      .audioCodec(audioCodec)
+      .audioBitrate(audioBitrateStr)
+      .outputOptions(outputOptions)
   }
 
   if(progressCb) {
@@ -363,13 +367,14 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
     })
   })
 
+  debug("Commande ffmpeg : %O", ffmpegProcessCmd)
+
   // Demarrer le traitement
   if(passe === 1) {
     // Aucun ouput a sauvegarder pour passe 1
     ffmpegProcessCmd.saveToFile('/dev/null')
-  } else if(passe === 2) {
-    ffmpegProcessCmd
-      .saveToFile(destinationPath)
+  } else {
+    ffmpegProcessCmd.saveToFile(destinationPath)
   }
 
   return {
@@ -389,24 +394,24 @@ async function stopCommand(commandeFfmpeg) {
   await fct
 }
 
-async function extraireFichierTemporaire(fichierPath, inputStream) {
-  //const fichierInputTmp = await tmpPromises.file({keep: true})
-  debug("Fichier temporaire : %s", fichierPath)
+// async function extraireFichierTemporaire(fichierPath, inputStream) {
+//   //const fichierInputTmp = await tmpPromises.file({keep: true})
+//   debug("Fichier temporaire : %s", fichierPath)
 
-  const outputStream = fs.createWriteStream(fichierPath)
-  const promiseOutput =  new Promise((resolve, reject)=>{
-    outputStream.on('error', err=>{
-      reject(err)
-      // fichierInputTmp.cleanup()
-    })
-    outputStream.on('close', _=>{resolve()})
-  })
+//   const outputStream = fs.createWriteStream(fichierPath)
+//   const promiseOutput =  new Promise((resolve, reject)=>{
+//     outputStream.on('error', err=>{
+//       reject(err)
+//       // fichierInputTmp.cleanup()
+//     })
+//     outputStream.on('close', _=>{resolve()})
+//   })
 
-  inputStream.pipe(outputStream)
-  // inputStream.read()
+//   inputStream.pipe(outputStream)
+//   // inputStream.read()
 
-  return promiseOutput
-}
+//   return promiseOutput
+// }
 
 async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, message, storeConsignation) {
   debug("Commande traiterCommandeTranscodage video recue : %O", message)
@@ -416,9 +421,6 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       fuuid = message.fuuid,
       mimetype = message.mimetype,
       videoBitrate = message.videoBitrate,
-      codecVideo = message.codecVideo,
-      codecAudio = message.codecAudio,
-      preset = message.preset,
       height = message.resolutionVideo || message.height,
       uuidCorrelationCleanup = null
 
@@ -430,10 +432,14 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     }
     videoBitrate = profil.videoBitrate
     height = profil.height
+    const videoQuality = profil.qualityVideo,
+          videoCodec = profil.videoCodecName
+
+    debug("Profil video : %O", profil)
 
     // Transmettre evenement debut de transcodage
-    mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`)
-    mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`, {exchange: '2.prive'})
+    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`)
+    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`, {exchange: '2.prive'})
 
     // Fonction de progres
     let lastUpdate = null, complet = false
@@ -453,11 +459,8 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
         }
       }
       lastUpdate = new Date().getTime()  // Reset
-      progressUpdate(mq, {fuuid, mimetype, videoBitrate, height}, progress) 
+      progressUpdate(mq, {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, progress) 
     }
-
-    // Creer un factory d'input streams decipher
-    const inputStreamFactory = () => { return fs.createReadStream(fichierDechiffre) }
 
     // Transmettre transaction info chiffrage
     const identificateurs_document = {
@@ -470,7 +473,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     const fichierOutputTmp = await tmpPromises.file({prefix: 'video-', keep: true})
     try {
       const outputStream = fs.createWriteStream(fichierOutputTmp.path)
-      let resultatTranscodage = await transcoderVideo(inputStreamFactory, outputStream, opts)
+      let resultatTranscodage = await transcoderVideo(fichierDechiffre, outputStream, opts)
       debug("Resultat transcodage : %O", resultatTranscodage)
 
       // resultatUpload = await uploaderFichierTraite(mq, fichierOutputTmp.path, clesPubliques, identificateurs_document)
@@ -492,6 +495,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
         height: probeInfo.height,
         codec: profil.videoCodecName,
         bitrate: resultatTranscodage.video.videoBitrate,
+        quality: videoQuality,
         taille_fichier: taille,
       }
       transactionAssocierVideo = await mq.pki.formatterMessage(
@@ -522,8 +526,8 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     //   taille_fichier: resultatUpload.taille,
     // }
 
-    mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`)
-    mq.emettreEvenement({fuuid, mimetype, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`, {exchange: '2.prive'})
+    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`)
+    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`, {exchange: '2.prive'})
 
     // Transmettre transaction pour associer le video au fuuid
     // const domainePreview = 'GrosFichiers', actionPreview = 'associerVideo'
@@ -531,8 +535,8 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
   } catch(err) {
     console.error("transformationsVideo: Erreur transcodage : %O", err)
     if(uuidCorrelationCleanup) storeConsignation.stagingDelete(uuidCorrelationCleanup)
-    mq.emettreEvenement({fuuid, mimetype, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`)
-    mq.emettreEvenement({fuuid, mimetype, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`, {exchange: '2.prive'})
+    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`)
+    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`, {exchange: '2.prive'})
     throw err
   }
 }
@@ -567,7 +571,7 @@ function getProfilTranscodage(params) {
     profil.videoBitrate = params.bitrateVideo
   }
   if(params.bitrateAudio) {
-    profil.audioBitrate = params.audioBitrate
+    profil.audioBitrate = params.bitrateAudio
   }
   if(params.resolutionVideo) {
     profil.height = params.resolutionVideo
@@ -583,7 +587,7 @@ function getProfilTranscodage(params) {
 
 function progressUpdate(mq, paramsVideo, progress) {
   /* Transmet un evenement de progres pour un transcodage video */
-  var pctProgres = '', ponderation = 1, bump = 0
+  var pctProgres = '', ponderation = 100, bump = 0
 
   if(progress.passe === 1) {
     ponderation = 10
@@ -602,11 +606,12 @@ function progressUpdate(mq, paramsVideo, progress) {
 
   if(pctProgres) {
     const {mimetype, fuuid} = paramsVideo
-    debug("Progres %s vers %s %d%", fuuid, mimetype, pctProgres)
+    // debug("Progres %s vers %s %d%", fuuid, mimetype, pctProgres)
+    debug("Progres %d %O", pctProgres, paramsVideo)
 
     const domaineAction = `evenement.fichiers.${fuuid}.transcodageProgres`
     const contenuEvenement = {...paramsVideo, pctProgres, passe: progress.passe}
-    mq.emettreEvenement(contenuEvenement, domaineAction)
+    // mq.emettreEvenement(contenuEvenement, domaineAction)
     mq.emettreEvenement(contenuEvenement, domaineAction, {exchange: '2.prive'})
   }
 }
