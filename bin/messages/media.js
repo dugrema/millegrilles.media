@@ -103,12 +103,18 @@ async function genererPreviewImage(message) {
   }
 
   // Transmettre demande cle et attendre retour sur l'autre Q (on bloque Q operations longues)
-  var hachageFichier = message.hachage || message.fuuid
-  var mimetype = message.mimetype
+  let hachageFichier = message.hachage || message.fuuid
+  let mimetype = message.mimetype
+  let extension = message.extension
   if(message.version_courante) {
     // C'est une retransmission
-    hachageFichier = message.version_courante.hachage || message.version_courante.fuuid
-    mimetype = mimetype || message.version_courante.mimetype
+    const version_courante = message.version_courante
+    hachageFichier = version_courante.hachage || version_courante.fuuid
+    mimetype = mimetype || version_courante.mimetype
+    if(!extension) {
+      const nom = version_courante.nom
+      if(nom) extension = nom.split('.').pop()
+    }
   }
   const cleFichier = await recupererCle(_mq, hachageFichier)
   debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
@@ -116,7 +122,7 @@ async function genererPreviewImage(message) {
   // Downloader et dechiffrer le fichier
   try {
     var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
-      hachageFichier, mimetype, cleFichier)
+      hachageFichier, mimetype, cleFichier, {extension})
   } catch(err) {
     debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
     return {ok: false, err: ''+err}
@@ -127,7 +133,7 @@ async function genererPreviewImage(message) {
   try {
     debug("Debut generation preview %O", message)
     resultatConversion = await traitementMedia.genererPreviewImage(
-      _mq, fichierDechiffre, message, {clesPubliques, fuuid: hachageFichier})
+      _mq, fichierDechiffre, message, {clesPubliques, fuuid: hachageFichier, extension})
     debug("Fin traitement thumbnails/posters, resultat : %O", resultatConversion)
   } finally {
     // Note: pour pdf, on utilise autoclean (indexation survient en meme temps)
@@ -281,6 +287,11 @@ async function genererPreviewVideo(message) {
         hachageFichier = message.fuuid || message.hachage || message.fuuid_v_courante || versionCourante.fuuid || versionCourante.hachage,
         mimetype = message.mimetype
 
+  let extension = message.extension
+  if(!extension && versionCourante.nom) {
+    extension = versionCourante.nom.split('.').pop()
+  }
+
   if(!hachageFichier) {
     console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
     return
@@ -291,7 +302,7 @@ async function genererPreviewVideo(message) {
   // Downloader et dechiffrer le fichier
   try {
     var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
-      hachageFichier, mimetype, cleFichier)
+      hachageFichier, mimetype, cleFichier, {extension})
   } catch(err) {
     debug("genererPreviewVideo Erreur download fichier avec downloaderFichierProtege : %O", err)
     return {ok: false, err: ''+err}
