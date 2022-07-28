@@ -317,7 +317,7 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
       outputOptions.push(preset)
     }
   
-    if(videoCodec === 'hevc') {
+    if(videoCodec === 'libx265') {
       outputOptions.push('-tag:v')
       outputOptions.push('hvc1')
     }
@@ -601,7 +601,7 @@ function progressUpdate(mq, paramsVideo, progress) {
     pctProgres = Math.floor(progress.frames * ponderation / progress.framesTotal) + bump
   } else if(progress.percent) {
     // Moins precis, se fier a ffmpeg
-    pctProgres = progress.percent
+    pctProgres = Math.floor(progress.percent)
   }
 
   if(pctProgres) {
