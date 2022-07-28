@@ -317,15 +317,24 @@ async function genererPreviewVideo(message) {
     resultatConversion = await traitementMedia.genererPreviewVideo(_mq, fichierDechiffre, message, optsConversion)
     debug("Fin traitement preview, resultat : %O", resultatConversion)
 
-    const {metadataImage, metadataVideo, conversions} = resultatConversion
+    const {probeVideo, conversions} = resultatConversion
+
+    const metadata = {
+      // videoCodec: probeVideo.raw.codec_name,
+      nbFrames: probeVideo.raw.nb_frames,
+      // duration: probeVideo.raw.duration,
+      videoBitrate:  probeVideo.raw.bitrate,
+    }
 
     const transactionAssocier = {
       tuuid: message.tuuid,
       fuuid: message.fuuid,
-      width: metadataImage.width,
-      height: metadataImage.height,
+      width: probeVideo.width,
+      height: probeVideo.height,
       mimetype: mimetype,
-      metadata: metadataVideo,
+      videoCodec: probeVideo.raw.codec_name,
+      duration: probeVideo.raw.duration,
+      metadata,
     }
     transactionAssocier.anime = true
   

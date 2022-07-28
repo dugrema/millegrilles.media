@@ -1,4 +1,4 @@
-const debug = require('debug')('millegrilles:fichiers:transformationImages')
+const debug = require('debug')('media:transformationImages')
 const fs = require('fs')
 const path = require('path')
 const tmp = require('tmp-promise')
@@ -6,6 +6,7 @@ const im = require('imagemagick')
 const FFmpeg = require('fluent-ffmpeg')
 
 const {chiffrerMemoire} = require('./cryptoUtils')
+const {probeVideo} = require('./transformationsVideo')
 
 async function genererPosterVideo(sourcePath, opts) {
   // Preparer fichier destination decrypte
@@ -16,6 +17,9 @@ async function genererPosterVideo(sourcePath, opts) {
 
   try {
     const snapshotPath = tmpFile.path
+
+    const probeVideoResult = await probeVideo(sourcePath)
+    debug("genererPosterVideo Probe video : %O", probeVideoResult)
 
     // Extraire une image du video
     const metadata = await genererSnapshotVideoPromise(sourcePath, snapshotPath)
@@ -40,7 +44,10 @@ async function genererPosterVideo(sourcePath, opts) {
     const resultatConversions = await Promise.all(promisesConversions)
     debug("Information de conversions completees : %O", resultatConversions)
 
-    return {metadataImage, metadataVideo: metadata, conversions: resultatConversions}
+    return {
+      // metadataImage, metadataVideo: metadata, 
+      probeVideo: probeVideoResult, conversions: resultatConversions
+    }
 
   } catch(err) {
     console.error("ERROR transformationImages.genererPosterVideo Erreur creation thumbnail/poster video : %O", err)
