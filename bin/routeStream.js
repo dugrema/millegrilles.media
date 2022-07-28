@@ -56,7 +56,15 @@ async function downloadVideoPrive(req, res, next) {
             const fichierMetadata = reponseFichiers.fichiers.pop()
             debug("Fichier metadata: %O", fichierMetadata)
 
-            const infoVideo = Object.values(fichierMetadata.version_courante.video).filter(item=>item.fuuid_video===fuuid).pop()
+            // Verifier si on prend l'original
+            let infoVideo = null
+            if(fichierMetadata.fuuid_v_courante === fuuid) {
+                // S'assurer que c'est un video
+                infoVideo = fichierMetadata.version_courante
+            } else {
+                infoVideo = Object.values(fichierMetadata.version_courante.video).filter(item=>item.fuuid_video===fuuid).pop()
+            }
+
             debug("Info video %s\n%O", fuuid, infoVideo)
             if(!infoVideo) {
                 debug("Aucuns videos associes")
