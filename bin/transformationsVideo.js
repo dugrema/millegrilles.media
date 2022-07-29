@@ -101,7 +101,7 @@ async function probeVideo(input, opts) {
 
   let heightEncoding = height
   if(!utiliserTailleOriginale) {
-    heightEncoding = [1080, 720, 480, 360, 320, 240].filter(item=>{
+    heightEncoding = [1080, 720, 480, 360, 320, 270].filter(item=>{
       return item <= height && item <= maxHeight
     }).shift() || 270
   }

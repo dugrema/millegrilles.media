@@ -18,7 +18,7 @@ async function genererPosterVideo(sourcePath, opts) {
   try {
     const snapshotPath = tmpFile.path
 
-    const probeVideoResult = await probeVideo(sourcePath)
+    const probeVideoResult = await probeVideo(sourcePath, {utiliserTailleOriginale: true})
     debug("genererPosterVideo Probe video : %O", probeVideoResult)
 
     // Extraire une image du video
