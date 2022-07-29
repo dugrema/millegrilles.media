@@ -419,6 +419,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
   // Verifier si le preview est sur une image chiffree - on va avoir une permission de dechiffrage
   var tuuid = message.tuuid,
       fuuid = message.fuuid,
+      user_id = message.user_id,
       mimetype = message.mimetype,
       videoBitrate = message.videoBitrate,
       height = message.resolutionVideo || message.height,
@@ -485,7 +486,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
 
       // Transmettre transaction associer video transcode
       var transactionAssocierVideo = {
-        tuuid, fuuid,
+        tuuid, fuuid, user_id,
   
         mimetype: message.mimetype,
         fuuid_video: hachage,
