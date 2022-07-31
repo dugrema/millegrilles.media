@@ -1,4 +1,4 @@
-const debug = require('debug')('millegrilles:fichiers:traitementMedia')
+const debug = require('debug')('media:traitementMedia')
 const fsPromises = require('fs/promises')
 const pdfParse = require('pdf-parse')
 const axios = require('axios')
@@ -40,8 +40,10 @@ function traiterImage(pathImageSrc, opts) {
 }
 
 // Extraction de thumbnail, preview et recodage des videos pour le web
-function traiterVideo(pathImageSrc, opts) {
-  return transformationImages.genererPosterVideo(pathImageSrc, opts)
+async function traiterVideo(pathImageSrc, opts) {
+  const resultat = await transformationImages.genererPosterVideo(pathImageSrc, opts)
+  console.error("traiterVideo !!! probe : %O", resultat)
+  return resultat
 }
 
 async function indexerDocument(mq, fichierDechiffre, message, optsConversion) {

@@ -41,24 +41,6 @@ const PROFILS_TRANSCODAGE = {
     videoCodecName: 'hevc',
     doublePass: false,
   },
-  // webm: {
-  //   videoBitrate: 1000000,
-  //   height: 720,
-  //   videoCodec: 'libvpx-vp9',
-  //   audioCodec: 'libopus',
-  //   audioBitrate: '128k',
-  //   format: 'webm',
-  //   videoCodecName: 'vp9',
-  // },
-  // mp4: {
-  //   videoBitrate: 250000,
-  //   height: 240,
-  //   videoCodec: 'libx264',
-  //   audioCodec: 'aac',
-  //   audioBitrate: '64k',
-  //   format: 'mp4',
-  //   videoCodecName: 'h264',
-  // }
 }
 
 async function probeVideo(input, opts) {
@@ -143,19 +125,13 @@ async function transcoderVideo(fichierInput, outputStream, opts) {
         format = opts.format || 'mp4',
         progressCb = opts.progressCb
 
+  if(progressCb) progressCb({percent: 0})
+
+  // Tenter transcodage avec un stream - fallback sur fichier direct
   const videoInfoOriginal = await probeVideo(fichierInput, {maxBitrate: videoBitrate, maxHeight: height, utiliserTailleOriginale})
   videoBitrate = opts.videoBitrate?videoInfoOriginal.bitrate:null  // Bitrate null signifie variable selon quality
   height = videoInfoOriginal.height || height
   width = videoInfoOriginal.width
-
-  // S'assurer que width est pair (requis par certains codec comme HEVC)
-  if(width%2 !== 0) width = width - 1
-
-  // videoBitrate = '' + (videoBitrate / 1000) + 'k'
-  debug('Utilisation video quality %s, bitrate : %s, format %dx%d\nInfo: %O', videoQuality, videoBitrate, width, height, videoInfoOriginal)
-
-  // Tenter transcodage avec un stream - fallback sur fichier direct
-  // Va etre utilise avec un decipher sur fichiers .mgs2
   
   let progressHook = null, 
       framesTotal = videoInfoOriginal.nb_frames, 
@@ -172,7 +148,16 @@ async function transcoderVideo(fichierInput, outputStream, opts) {
         framesCourant = progress.frames
       }
     }
+
+    // Faire un premier appel pour eviter que la job de conversion soit reallouee
+    progressHook({percent: 0})
   }
+
+  // S'assurer que width est pair (requis par certains codec comme HEVC)
+  if(width%2 !== 0) width = width - 1
+
+  // videoBitrate = '' + (videoBitrate / 1000) + 'k'
+  debug('Utilisation video quality %s, bitrate : %s, format %dx%d\nInfo: %O', videoQuality, videoBitrate, width, height, videoInfoOriginal)
 
   // Creer repertoire temporaire pour fichiers de log, outputfile
   const tmpDir = await tmpPromises.dir({unsafeCleanup: true})
@@ -355,6 +340,8 @@ function transcoderPasse(passe, source, destinationPath, videoOpts, audioOpts, o
 
   if(progressCb) {
     ffmpegProcessCmd.on('progress', progressCb)
+    // Faire un appel progress pour eviter la reallocation du video
+    progressCb({percent: 0, passe})
   }
 
   const processPromise = new Promise((resolve, reject)=>{
@@ -425,6 +412,9 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       height = message.resolutionVideo || message.height,
       uuidCorrelationCleanup = null
 
+  let videoQuality = message.qualityVideo,
+      videoCodec = message.codecVideo
+
   try {
     const profil = getProfilTranscodage(message)
     if(!profil) {
@@ -433,13 +423,12 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     }
     videoBitrate = profil.videoBitrate
     height = profil.height
-    const videoQuality = profil.qualityVideo,
-          videoCodec = profil.videoCodecName
+    videoQuality = profil.qualityVideo || videoQuality
+    videoCodec = profil.videoCodecName || videoCodec
 
     debug("Profil video : %O", profil)
 
     // Transmettre evenement debut de transcodage
-    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`)
     mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`, {exchange: '2.prive'})
 
     // Fonction de progres
@@ -527,8 +516,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     //   taille_fichier: resultatUpload.taille,
     // }
 
-    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`)
-    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`, {exchange: '2.prive'})
+    // mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageTermine`, {exchange: '2.prive'})
 
     // Transmettre transaction pour associer le video au fuuid
     // const domainePreview = 'GrosFichiers', actionPreview = 'associerVideo'
@@ -537,7 +525,6 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     console.error("transformationsVideo: Erreur transcodage : %O", err)
     if(uuidCorrelationCleanup) storeConsignation.stagingDelete(uuidCorrelationCleanup)
     mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`)
-    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`, {exchange: '2.prive'})
     throw err
   }
 }
@@ -605,7 +592,7 @@ function progressUpdate(mq, paramsVideo, progress) {
     pctProgres = Math.floor(progress.percent)
   }
 
-  if(pctProgres) {
+  if(!isNaN(pctProgres)) {
     const {mimetype, fuuid} = paramsVideo
     // debug("Progres %s vers %s %d%", fuuid, mimetype, pctProgres)
     debug("Progres %d %O", pctProgres, paramsVideo)

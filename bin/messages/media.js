@@ -116,8 +116,14 @@ async function genererPreviewImage(message) {
       if(nom) extension = nom.split('.').pop()
     }
   }
-  const cleFichier = await recupererCle(_mq, hachageFichier)
-  debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
+
+  try {
+    var cleFichier = await recupererCle(_mq, hachageFichier)
+    debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
+  } catch(err) {
+    debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", hachageFichier, err)
+    return {ok: false, err: 'Cles non disponibles : '+err}
+  }
 
   // Downloader et dechiffrer le fichier
   try {
@@ -143,31 +149,36 @@ async function genererPreviewImage(message) {
     }
   }
 
-  const {nbFrames, conversions} = resultatConversion
-  const metadataImage = resultatConversion.metadataImage || {}
+  try {
+    const {nbFrames, conversions} = resultatConversion
+    const metadataImage = resultatConversion.metadataImage || {}
 
-  // Transmettre transaction preview
-  const transactionAssocier = {
-    tuuid: message.tuuid,
-    fuuid: hachageFichier,  // message.fuuid,
-    // images,
-    width: metadataImage.width,
-    height: metadataImage.height,
-    mimetype: metadataImage['mime type'],
+    // Transmettre transaction preview
+    const transactionAssocier = {
+      tuuid: message.tuuid,
+      fuuid: hachageFichier,  // message.fuuid,
+      // images,
+      width: metadataImage.width,
+      height: metadataImage.height,
+      mimetype: metadataImage['mime type'],
+    }
+    // Determiner si on a une image animee (fichier avec plusieurs frames, sauf PDF (plusieurs pages))
+    const estPdf = transactionAssocier.mimetype === 'application/pdf'
+    if(!estPdf && nbFrames > 1) transactionAssocier.anime = true
+
+    const images = await traiterConversions(hachageFichier, conversions, clesPubliques, transactionAssocier)
+    // transactionAssocier.images = images
+
+    // debug("Transaction associer images converties : %O", transactionAssocier)
+    // _mq.transmettreTransactionFormattee(
+    //   transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
+    // ).catch(err=>{
+    //     console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
+    //   })
+  } catch(err) {
+    debug("genererPreviewImage Erreur preparation resultat conversion fichier %s : %O", hachageFichier, err)
+    return {ok: false, err: 'Erreur preparation resultat conversion : '+err}
   }
-  // Determiner si on a une image animee (fichier avec plusieurs frames, sauf PDF (plusieurs pages))
-  const estPdf = transactionAssocier.mimetype === 'application/pdf'
-  if(!estPdf && nbFrames > 1) transactionAssocier.anime = true
-
-  const images = await traiterConversions(hachageFichier, conversions, clesPubliques, transactionAssocier)
-  // transactionAssocier.images = images
-
-  // debug("Transaction associer images converties : %O", transactionAssocier)
-  // _mq.transmettreTransactionFormattee(
-  //   transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
-  // ).catch(err=>{
-  //     console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
-  //   })
 
 }
 
@@ -317,6 +328,11 @@ async function genererPreviewVideo(message) {
     resultatConversion = await traitementMedia.genererPreviewVideo(_mq, fichierDechiffre, message, optsConversion)
     debug("Fin traitement preview, resultat : %O", resultatConversion)
 
+    if(!resultatConversion) {
+      console.error("genererPreviewVideo Erreur conversion (aucuns resultats) video %s", message.fuuid)
+      return
+    }
+
     const {probeVideo, conversions} = resultatConversion
 
     const metadata = {
@@ -429,9 +445,14 @@ async function _traiterCommandeTranscodage(message) {
 
     await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, reponseGetJob, _storeConsignation)
       .catch(err=>{
-        console.error("media._traiterCommandeTranscodage ERROR %s: %O", fuuid, err)
+        debug("media._traiterCommandeTranscodage ERROR Erreur transcodage  %s: %O", fuuid, err)
+        return {ok: false, err: 'Erreur transcodage '+err}
       })
-  } finally {
+  } catch(err) {
+    debug("media._traiterCommandeTranscodage ERROR Erreur transcodage %s: %O", fuuid, err)
+    return {ok: false, err: 'Erreur transcodage '+err}
+}
+  finally {
     // maintenant autoclean
     //if(cleanup) cleanup()
   }
