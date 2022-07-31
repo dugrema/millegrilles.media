@@ -213,6 +213,11 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
      
       let transactionContenu = {...transactionAssocier}
       transactionContenu.images = {thumb, small}
+      // Cleanup transaction
+      const transactionMetadata = transactionContenu.metadata
+      if(transactionContenu.duration === 'N/A') delete transactionContenu.duration
+      if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
+
       transactionContenu = await _mq.pki.formatterMessage(
         transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
       debug("Transaction thumbnails : %O", transactionContenu)
@@ -247,6 +252,12 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
 
       let transactionContenu = {...transactionAssocier}
       transactionContenu.images = {[cle]: resultat}
+
+      // Cleanup transaction
+      const transactionMetadata = transactionContenu.metadata
+      if(transactionContenu.duration === 'N/A') delete transactionContenu.duration
+      if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
+
       transactionContenu = await _mq.pki.formatterMessage(
         transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
       debug("Transaction contenu image : %O", transactionContenu)

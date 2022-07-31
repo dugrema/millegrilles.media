@@ -29,12 +29,14 @@ async function genererPosterVideo(sourcePath, opts) {
     const {metadataImage, conversions} = await determinerConversionsPoster(snapshotPath)
     debug("Information de conversion d'images du video : medataImage %O\nconversions %O", metadataImage, conversions)
 
+    const sourceImage = metadataImage.filename || sourcePath
+
     // Effectuer les conversions pour tous les formats
     const promisesConversions = await convertir(
       mq,
       // chiffrerTemporaire, deplacerVersStorage,
       clesPubliques,
-      sourcePath,
+      sourceImage,
       // pathConsignation,
       fuuid,
       conversions
