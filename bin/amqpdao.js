@@ -33,6 +33,7 @@ async function init(opts) {
   // const nomsQCustom = ['image', 'video', 'publication']
   const qCustom = {
     'image': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/image'},
+    'pdf': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/pdf'},
 
     // transcodage peut prendre plus de 30 minutes (ACK timeout)
     'video': {ttl: EXPIRATION_MESSAGE_VIDEO, name: 'media/video', preAck: true},

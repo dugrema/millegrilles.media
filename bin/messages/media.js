@@ -47,7 +47,6 @@ function enregistrerChannel() {
       (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
       ['commande.fichiers.jobConversionVideoDisponible'],
       {
-        // operationLongue: true,
         qCustom: 'video',
         exchange,
       }
@@ -57,8 +56,16 @@ function enregistrerChannel() {
       (routingKey, message)=>{return genererPreviewImage(message)},
       ['commande.fichiers.genererPosterImage'],
       {
-        // operationLongue: true,
         qCustom: 'image',
+        exchange,
+      }
+    )
+
+    _mq.routingKeyManager.addRoutingKeyCallback(
+      (routingKey, message)=>{return genererPreviewImage(message)},
+      ['commande.fichiers.genererPosterPdf'],
+      {
+        qCustom: 'pdf',
         exchange,
       }
     )
@@ -216,7 +223,9 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
       // Cleanup transaction
       const transactionMetadata = transactionContenu.metadata
       if(transactionContenu.duration === 'N/A') delete transactionContenu.duration
-      if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
+      if(transactionMetadata) {
+        if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
+      }
 
       transactionContenu = await _mq.pki.formatterMessage(
         transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
@@ -256,7 +265,9 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
       // Cleanup transaction
       const transactionMetadata = transactionContenu.metadata
       if(transactionContenu.duration === 'N/A') delete transactionContenu.duration
-      if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
+      if(transactionMetadata) {
+        if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
+      }
 
       transactionContenu = await _mq.pki.formatterMessage(
         transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
@@ -351,7 +362,7 @@ async function genererPreviewVideo(message) {
 
     const metadata = {
       // videoCodec: probeVideo.raw.codec_name,
-      nbFrames: probeVideo.raw.nb_frames,
+      nbFrames: probeVideo.raw.nb_frames!=="N/A"?probeVideo.raw.nb_frames:null,
       // duration: probeVideo.raw.duration,
       videoBitrate:  probeVideo.raw.bitrate,
     }
@@ -363,7 +374,7 @@ async function genererPreviewVideo(message) {
       height: probeVideo.height,
       mimetype: mimetype,
       videoCodec: probeVideo.raw.codec_name,
-      duration: probeVideo.raw.duration,
+      duration: probeVideo.raw.duration!=='N/A'?probeVideo.raw.duration:null,
       metadata,
     }
     transactionAssocier.anime = true
