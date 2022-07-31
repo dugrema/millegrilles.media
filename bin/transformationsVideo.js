@@ -433,7 +433,9 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
 
     // Fonction de progres
     let lastUpdate = null, complet = false
-    const progressCb = progress => { 
+    const progressCb = (progress, opts) => { 
+      opts = opts || {}
+      const etat = opts.etat || 'transcodage'
       // debug("traiterCommandeTranscodage Progress update %s / %s;%s:%s : %O", fuuid, mimetype, height, videoBitrate, progress)
       if(progress && progress.force === true) {
         // Ok
@@ -449,7 +451,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
         }
       }
       lastUpdate = new Date().getTime()  // Reset
-      progressUpdate(mq, {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, progress) 
+      progressUpdate(mq, {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, etat}, progress) 
     }
 
     // Transmettre transaction info chiffrage
@@ -462,6 +464,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     debug("Debut dechiffrage fichier video, opts : %O", opts)
     const fichierOutputTmp = await tmpPromises.file({prefix: 'video-', keep: true})
     try {
+      progressCb({percent: 0}, {etat: 'transcodageDebut'})
       const outputStream = fs.createWriteStream(fichierOutputTmp.path)
       let resultatTranscodage = await transcoderVideo(fichierDechiffre, outputStream, opts)
       debug("Resultat transcodage : %O", resultatTranscodage)
@@ -498,7 +501,8 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     }
 
     await storeConsignation.stagingReady(mq, transactionAssocierVideo, commandeMaitrecles, uuidCorrelation)
-
+    progressCb({percent: 100}, {etat: 'termine'})
+    
     // const probeInfo = resultatTranscodage.probe
 
     // // Transmettre transaction associer video transcode
@@ -524,6 +528,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
   } catch(err) {
     console.error("transformationsVideo: Erreur transcodage : %O", err)
     if(uuidCorrelationCleanup) storeConsignation.stagingDelete(uuidCorrelationCleanup)
+    progressCb({percent: -1}, {etat: 'erreur'})
     mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`)
     throw err
   }
@@ -575,7 +580,7 @@ function getProfilTranscodage(params) {
 
 function progressUpdate(mq, paramsVideo, progress) {
   /* Transmet un evenement de progres pour un transcodage video */
-  var pctProgres = '', ponderation = 100, bump = 0
+  var pctProgres = 0, ponderation = 100, bump = 0
 
   if(progress.passe === 1) {
     ponderation = 10
@@ -605,5 +610,5 @@ function progressUpdate(mq, paramsVideo, progress) {
 }
 
 module.exports = {
-  probeVideo, transcoderVideo, traiterCommandeTranscodage,
+  probeVideo, transcoderVideo, traiterCommandeTranscodage, progressUpdate,
 }

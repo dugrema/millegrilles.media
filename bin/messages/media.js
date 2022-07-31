@@ -1,6 +1,6 @@
 const debug = require('debug')('millegrilles:messages:media')
 const traitementMedia = require('../traitementMedia.js')
-const { traiterCommandeTranscodage } = require('../transformationsVideo')
+const { traiterCommandeTranscodage, progressUpdate } = require('../transformationsVideo')
 // const transfertConsignation = require('../transfertConsignation')
 const { recupererCle } = require('../pki')
 
@@ -431,13 +431,25 @@ async function _traiterCommandeTranscodage(message) {
 
   debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", fuuid, informationCle)
 
+  // Creer un progress cb regulier - utilise comme healthcheck pour eviter la reallocation de la conversion de fichier
+  const progressDownload = () => {
+    const {fuuid, cle_conversion } = message
+    const [mimetype, videoCodec, heightStr, videoQuality ] = cle_conversion.split(';')
+    const height = Number.parseInt(heightStr.replace('p', ''))
+    const paramsVideo = {fuuid, mimetype, videoCodec, height, videoQuality, etat: 'downloading'}
+    progressUpdate(_mq, paramsVideo, {percent: 0})
+  }
+  let timeoutProgressDownload = setTimeout(progressDownload, 20000)
   // Downloader et dechiffrer le fichier
   try {
+    progressDownload()
     var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
       fuuid, mimetype, cleFichier)
   } catch(err) {
     debug("_traiterCommandeTranscodage Erreur download fichier avec downloaderFichierProtege : %O", err)
     return {ok: false, err: ''+err}
+  } finally {
+    clearTimeout(timeoutProgressDownload)
   }
 
   try {
