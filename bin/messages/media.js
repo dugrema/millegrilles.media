@@ -141,6 +141,9 @@ async function genererPreviewImage(message) {
     resultatConversion = await traitementMedia.genererPreviewImage(
       _mq, fichierDechiffre, message, {clesPubliques, fuuid: hachageFichier, extension})
     debug("Fin traitement thumbnails/posters, resultat : %O", resultatConversion)
+  } catch(err) {
+    debug("genererPreviewImage Erreur creation preview image %s : %O", hachageFichier, err)
+    return {ok: false, err: 'Erreur creation preview image : '+err}
   } finally {
     // Note: pour pdf, on utilise autoclean (indexation survient en meme temps)
     if(mimetype !== 'application/pdf') {
