@@ -289,9 +289,9 @@ async function determinerConversionsImages(sourcePath) {
       conversions['image/webp;1440'] = {ext: 'webp', resolution: 1440, params: ['-strip', '-resize', ratioInverse?'1440x2560'+operationResize:'2560x1440'+operationResize, '-quality', quality]}
     } else if(valRef >= 1080) {
       conversions['image/webp;1080'] = {ext: 'webp', resolution: 1080, params: ['-strip', '-resize', ratioInverse?'1080x1920'+operationResize:'1920x1080'+operationResize, '-quality', quality]}
-    } else if (![720, 480].includes(valRef)) {
+    } else if(valRef > 200) {
       // L'image est plus petite que 1080, generer une version avec grandeur originale.
-      // Couvre les case entre 240 et 1080. Seule exception, si res est 480 ou 720 (deja couvert)
+      // Couvre les case entre 200 et 1080.
       let valAutre = Math.floor(valRef * 16 / 9)
       conversions['image/webp;' + valRef] = {ext: 'webp', resolution: valRef, params: ['-strip', '-resize', ratioInverse?''+valRef+'x'+valAutre+operationResize:''+valAutre+'x'+valRef+operationResize, '-quality', quality]}
     }
@@ -301,10 +301,10 @@ async function determinerConversionsImages(sourcePath) {
     // }
 
     // Default fallback
-    if(valRef >= 480) {
-      // conversions['image/webp;480'] = {ext: 'webp', resolution: 480, params: ['-strip', '-resize', ratioInverse?'480x854'+operationResize:'854x480'+operationResize, '-quality', quality]}
-      conversions['image/jpeg;480'] = {ext: 'jpg', resolution: 480, params: ['-strip', '-resize', ratioInverse?'480x854'+operationResize:'854x480'+operationResize, '-quality', quality]}
-    }
+    // if(valRef >= 480) {
+    //   // conversions['image/webp;480'] = {ext: 'webp', resolution: 480, params: ['-strip', '-resize', ratioInverse?'480x854'+operationResize:'854x480'+operationResize, '-quality', quality]}
+    //   conversions['image/jpeg;480'] = {ext: 'jpg', resolution: 480, params: ['-strip', '-resize', ratioInverse?'480x854'+operationResize:'854x480'+operationResize, '-quality', quality]}
+    // }
   }
 
   return {metadataImage, nbFrames, conversions}
@@ -374,11 +374,11 @@ async function determinerConversionsPoster(sourcePath, opts) {
       resolution: valRef,
       params: ['-strip', '-resize', geometrie, '-quality', quality]
     }
-    conversions['image/jpeg;' + valRef] = {
-      ext: 'jpg',
-      resolution: valRef,
-      params: ['-strip', '-resize', geometrie, '-quality', quality]
-    }
+    // conversions['image/jpeg;' + valRef] = {
+    //   ext: 'jpg',
+    //   resolution: valRef,
+    //   params: ['-strip', '-resize', geometrie, '-quality', quality]
+    // }
   //}
 
   return {metadataImage, nbFrames, conversions}
