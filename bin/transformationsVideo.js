@@ -20,9 +20,10 @@ const PROFILS_TRANSCODAGE = {
     format: 'mp4',
     videoCodecName: 'h264',
     doublePass: false,
+    preset: 'veryfast',
   },
   vp9: {
-    qualityVideo: 30,
+    qualityVideo: 36,
     height: 360,
     videoCodec: 'libvpx-vp9',
     audioCodec: 'libopus',
@@ -30,6 +31,7 @@ const PROFILS_TRANSCODAGE = {
     format: 'webm',
     videoCodecName: 'vp9',
     doublePass: true,
+    preset: 'medium',
   },
   hevc: {
     qualityVideo: 30,
@@ -40,6 +42,7 @@ const PROFILS_TRANSCODAGE = {
     format: 'mp4',
     videoCodecName: 'hevc',
     doublePass: false,
+    preset: 'medium',
   },
 }
 
