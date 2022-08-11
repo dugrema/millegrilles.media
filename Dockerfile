@@ -1,4 +1,4 @@
-FROM docker.maceroc.com/nodejsmedia:16_8
+FROM docker.maceroc.com/nodejsmedia:18_0
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -25,7 +25,7 @@ EXPOSE 443
 
 COPY ./ ./
 
-RUN npm i --production && \
+RUN npm i --omit-dev && \
     rm -rf /root/.npm
 
 CMD [ "npm", "start" ]
