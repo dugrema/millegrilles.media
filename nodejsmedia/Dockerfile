@@ -1,4 +1,4 @@
-FROM node:16
+FROM node:18
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -14,7 +14,8 @@ COPY ./package*.json ./
 COPY ./fix_config.sh ./
 
 # Installer ffmpeg, imagemagick pour conversion video et images
-RUN npm i --production && \
+RUN export NODE_OPTIONS=--openssl-legacy-provider && \
+    npm i --omit-dev && \
     apt update && \
     apt install ffmpeg imagemagick-6.q16 ghostscript -y && \
     ./fix_config.sh && \
