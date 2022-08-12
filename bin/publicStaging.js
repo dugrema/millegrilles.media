@@ -49,7 +49,8 @@ async function creerStreamDechiffrage(mq, fuuidFichier, opts) {
   // Dechiffrer cle recue
   const cleDechiffree = await mq.pki.decrypterAsymetrique(cleChiffree)
 
-  const decipherStream = getDecipherPipe4fuuid(cleDechiffree, iv, {tag})
+  throw new Error('fix me')
+  const decipherStream = getDecipherPipe4fuuid(cleDechiffree, infoClePreview)
 
   return {acces: reponseCle.acces, permission: reponsePermission, fuuidEffectif, decipherStream, infoVideo}
 }

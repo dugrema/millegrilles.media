@@ -104,7 +104,9 @@ async function creerOutputstreamChiffrage(certificatsPem, identificateurs_docume
   transformStream._flush = async next => {
     try {
       const resultatChiffrage = await cipher.finalize()
-      transformStream.resultatChiffrage  // Permet d'extraire les params de chiffrage comme tag, header, hachage, etc.
+      
+      // Permet d'extraire les params de chiffrage comme tag, header, hachage, etc.
+      transformStream.resultatChiffrage = resultatChiffrage  
 
       // console.debug("Resultat chiffrage : %O", resultatChiffrage)
 
@@ -147,51 +149,49 @@ async function creerOutputstreamChiffrage(certificatsPem, identificateurs_docume
 
 async function chiffrerMemoire(pki, fichierSrc, clesPubliques, opts) {
   opts = opts || {}
+  debug("chiffrerMemoire Cles publiques pour cipher : %O", clesPubliques)
 
   const identificateurs_document = opts.identificateurs_document || {}
-
-  // const contenuChiffre = await chiffrer(message, {clePubliqueEd25519: publicKeyBytes})
-  // console.debug("Contenu chiffre : %O", contenuChiffre)
-  // const {ciphertext, secretKey, meta} = contenuChiffre,
-  //       {iv, tag} = meta
+  const certCaInfo = {cert: pki.caForge, fingerprint: pki.fingerprintCa}
 
   // Creer cipher
-  debug("Cles publiques pour cipher : %O", clesPubliques)
-  const cipher = await pki.creerCipherChiffrageAsymmetrique(
-    clesPubliques, 'GrosFichiers', identificateurs_document
-  )
+  const cipherStream = await creerOutputstreamChiffrage(clesPubliques, identificateurs_document, 'GrosFichiers', certCaInfo, opts)
+  
+  let positionBuffer = 0
+  const buffer = new Uint8Array(64*1024); // On ne devrait pas chiffrer de contenu en memoire qui depasse 1 block de cipher
 
-  return new Promise(async (resolve, reject)=>{
-    const s = fs.ReadStream(fichierSrc)
-    var tailleFichier = 0
-    var buffer = new Uint8Array(0);
-    s.on('error', err=>reject(err))
-    s.on('data', async data => {
-      let contenuCrypte = await cipher.update(data);
-      if(!ArrayBuffer.isView()) {
-        contenuCrypte = new Uint8Array(contenuCrypte)
-      }
-      tailleFichier += contenuCrypte.length
-      buffer = [...buffer, ...contenuCrypte]
+  const promiseDone = new Promise(async (resolve, reject)=>{
+    cipherStream.on('error', err=>reject(err))
+    cipherStream.on('data', async data => {
+      buffer.set(data, positionBuffer)
+      positionBuffer += data.length
     })
-    s.on('end', async _ => {
-      const informationChiffrage = await cipher.finalize()
-
-      if(opts.base64 === true) {
-        // Convertir les bytes en base64
-        const ab = Uint8Array.from(buffer)
-        buffer = base64.encode(ab)
-      }
-
-      debug("Information chiffrage fichier : %O", informationChiffrage)
-      return resolve({
-        tailleFichier,
-        data: buffer,
-        meta: informationChiffrage.meta,
-        commandeMaitreCles: informationChiffrage.commandeMaitreCles
-      })
-    })
+    cipherStream.on('end', resolve)
+    cipherStream.on('error', reject)
   })
+
+  const s = fs.ReadStream(fichierSrc)
+  s.pipe(cipherStream)
+
+  await promiseDone
+
+  debug("Resultat cipher stream : %O, buffer chiffre (len: %d): %O", cipherStream, positionBuffer, buffer)
+  const {resultatChiffrage, commandeMaitredescles} = cipherStream
+
+  let outputBuffer = buffer.slice(0, positionBuffer)
+  if(opts.base64 === true) {
+    // Convertir les bytes en base64
+    outputBuffer = base64.encode(outputBuffer)
+  }
+
+  debug("Information chiffrage fichier : %O", resultatChiffrage)
+  return {
+    tailleFichier: positionBuffer,
+    data: outputBuffer,
+    hachage: resultatChiffrage.hachage,
+    meta: resultatChiffrage,
+    commandeMaitreCles: commandeMaitredescles
+  }
 
 }
 

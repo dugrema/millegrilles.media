@@ -171,7 +171,7 @@ async function convertir(
           ...resultat,
           informationImage: {
             ...resultat.informationImage,
-            hachage: resultatChiffrage.meta.hachage,
+            hachage: resultatChiffrage.hachage,
             taille: resultatChiffrage.tailleFichier,
             data_chiffre: resultatChiffrage.data,
           },

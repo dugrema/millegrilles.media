@@ -42,7 +42,6 @@ function traiterImage(pathImageSrc, opts) {
 // Extraction de thumbnail, preview et recodage des videos pour le web
 async function traiterVideo(pathImageSrc, opts) {
   const resultat = await transformationImages.genererPosterVideo(pathImageSrc, opts)
-  console.error("traiterVideo !!! probe : %O", resultat)
   return resultat
 }
 
