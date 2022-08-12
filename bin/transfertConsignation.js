@@ -270,6 +270,8 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
 
     // Signer commande maitre des cles
     var commandeMaitrecles = chiffrageStream.commandeMaitredescles
+    const resultatChiffrage = chiffrageStream.resultatChiffrage || {},
+          taille = resultatChiffrage.taille
 
     const partition = commandeMaitrecles._partition
     delete commandeMaitrecles['_partition']
@@ -278,7 +280,7 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
 
     debug("Commande maitre des cles signee : %O", commandeMaitrecles)
 
-    return {uuidCorrelation, commandeMaitrecles, hachage: commandeMaitrecles.hachage_bytes, taille: chiffrageStream.byteCount}
+    return {uuidCorrelation, commandeMaitrecles, hachage: commandeMaitrecles.hachage_bytes, taille}
 
   } catch(e) {
     debug("Erreur upload fichier traite %s, DELETE tmp serveur. Erreur : %O", uuidCorrelation, e)
@@ -294,6 +296,7 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
 }
 
 async function dechiffrerStream(stream, cleFichier, writeStream) {
+  debug("dechiffrerStream cleFichier : %O", cleFichier)
   const decipherTransformStream = await decipherTransform(cleFichier.cleSymmetrique, {...cleFichier.metaCle})
 
   const promiseTraitement = new Promise((resolve, reject)=>{

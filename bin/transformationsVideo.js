@@ -473,8 +473,10 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       debug("Resultat transcodage : %O", resultatTranscodage)
 
       // resultatUpload = await uploaderFichierTraite(mq, fichierOutputTmp.path, clesPubliques, identificateurs_document)
-      var {uuidCorrelation, commandeMaitrecles, hachage, taille} = await transfertConsignation.stagerFichier(
+      const stagingInfo = await transfertConsignation.stagerFichier(
         mq, fichierOutputTmp.path, clesPubliques, identificateurs_document, storeConsignation)
+      // debug("Video Staging info : %O", stagingInfo)
+      var {uuidCorrelation, commandeMaitrecles, hachage, taille} = stagingInfo
       uuidCorrelationCleanup = uuidCorrelation
       
       const probeInfo = resultatTranscodage.probe
