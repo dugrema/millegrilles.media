@@ -439,7 +439,7 @@ function genererSnapshotVideoPromise(sourcePath, previewPath) {
       .takeScreenshots(
         {
           count: 1,
-          timestamps: ['4%'],   // Prendre snapshot a 4% du debut du video
+          timestamps: ['25%'],
           filename: nomFichierPreview,
           folder: folderPreview,
           // size: '640x?',
