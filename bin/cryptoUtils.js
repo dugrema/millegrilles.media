@@ -1,10 +1,10 @@
-const debug = require('debug')('millegrilles:fichiers:cryptoUtils')
+const debug = require('debug')('media:cryptoUtils')
 const fs = require('fs');
 const crypto = require('crypto');
 const {Transform} = require('stream')
 // const multibase = require('multibase')
 // const { creerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.common/lib/chiffrage')
-const { preparerCipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.nodejs/src/chiffrage')
+const { preparerCipher, preparerDecipher, preparerCommandeMaitrecles } = require('@dugrema/millegrilles.nodejs/src/chiffrage')
 const { base64 } = require('multiformats/bases/base64');
 // const { dechiffrerCle } = require('@dugrema/millegrilles.utiljs/src/chiffrage.ed25519');
 
@@ -42,6 +42,39 @@ async function getDecipherPipe4fuuid(cleSecrete, iv, opts) {
   transformStream.close = _ => {decipher.end()}
 
   return {reader: decipher, writer: transformStream}
+}
+
+/**
+ * Transform pour dechiffrer un fichier a partir d'un stream.
+ * Peut etre utilise a la fois comme reader (input) et writer (vers output) avec un pipe.
+ */
+async function decipherTransform(key, opts) {
+
+  // Creer decipher
+  const decipher = await preparerDecipher(key, opts)
+
+  // Transform stream qui effectue le dechiffrage
+  const transformStream = new Transform()
+
+  transformStream._transform = async (chunk, encoding, next) => {
+    try {
+      const chunkDechiffree = await decipher.update(chunk)
+      next(null, chunkDechiffree)
+    } catch(err) {
+      next(err)
+    }
+  }
+  
+  transformStream._flush = async next => {
+    try {
+      const output = await decipher.finalize()
+      next(null, output.message)
+    } catch(err) {
+      next(err)
+    }
+  }
+
+  return transformStream
 }
 
 /**
@@ -146,6 +179,8 @@ async function chiffrerMemoire(pki, fichierSrc, clesPubliques, opts) {
 
 module.exports = {
   getDecipherPipe4fuuid, 
+  decipherTransform,
+  // DecipherTransformStream,
   // gcmStreamReaderFactory,
   creerOutputstreamChiffrage,
   chiffrerMemoire,
