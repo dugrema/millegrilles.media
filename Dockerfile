@@ -25,7 +25,8 @@ EXPOSE 443
 
 COPY ./ ./
 
-RUN npm i --omit-dev && \
+RUN export NODE_OPTIONS=--openssl-legacy-provider && \
+    npm i --omit-dev && \
     rm -rf /root/.npm
 
 CMD [ "npm", "start" ]
