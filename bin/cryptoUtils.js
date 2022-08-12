@@ -90,39 +90,57 @@ async function creerOutputstreamChiffrage(certificatsPem, identificateurs_docume
   opts = opts || {}
 
   const clePubliqueCa = certCaInfo.cert.publicKey.publicKeyBytes
-  const cipherInfo = await preparerCipher({clePubliqueEd25519: clePubliqueCa})
-  // console.debug("!!! CipherInfo: %O", cipherInfo)
-  const cipher = cipherInfo.cipher,
-        iv = base64.encode(cipherInfo.iv)
+  const cipherInfo = await preparerCipher({clePubliqueEd25519: clePubliqueCa}, opts)
+  // console.debug("!!! CipherInfo: %O (opts: %O)", cipherInfo, opts)
+  const cipher = cipherInfo.cipher
 
   const transformStream = new Transform()
-  transformStream.byteCount = 0
+
   transformStream._transform = async (chunk, encoding, next) => {
     const cipherChunk = await cipher.update(chunk)
-    transformStream.push(cipherChunk)
-    transformStream.byteCount += cipherChunk.length
-    next()
+    next(null, cipherChunk)
   }
-  transformStream.resultat = null
 
-  transformStream.on('end', async _ =>{
-    const infoChiffrage = await cipher.finalize()
-    // console.debug("!!! InfoChiffrage : %O", infoChiffrage)
-    // const meta = {iv: cipherInfo.iv, ...infoChiffrage.meta}
+  transformStream._flush = async next => {
+    try {
+      const resultatChiffrage = await cipher.finalize()
+      transformStream.resultatChiffrage  // Permet d'extraire les params de chiffrage comme tag, header, hachage, etc.
 
-    // Preparer commande MaitreDesCles
-    transformStream.commandeMaitredescles = await preparerCommandeMaitrecles(
-      certificatsPem, cipherInfo.secretKey, domaine,
-      infoChiffrage.hachage, iv, infoChiffrage.tag,
-      identificateurs_document,
-      opts
-    )
+      // console.debug("Resultat chiffrage : %O", resultatChiffrage)
 
-    // Ajouter cle chiffree pour cle de millegrille
-    transformStream.commandeMaitredescles.cles[certCaInfo.fingerprint] = cipherInfo.secretChiffre
+      // Preparer commande MaitreDesCles
+      transformStream.commandeMaitredescles = await preparerCommandeMaitrecles(
+        certificatsPem, cipherInfo.secretKey, domaine, resultatChiffrage.hachage, identificateurs_document,
+        {...opts, ...resultatChiffrage}
+      )
 
-    debug("Resultat chiffrage disponible : %O", transformStream.commandeMaitredescles)
-  })
+      // Ajouter cle chiffree pour cle de millegrille
+      transformStream.commandeMaitredescles.cles[certCaInfo.fingerprint] = cipherInfo.secretChiffre
+
+      next(null, resultatChiffrage.ciphertext)  // Emettre derniers bytes
+    } catch(err) {
+      next(err)
+    }
+  }
+
+  // transformStream.on('end', async _ =>{
+  //   const infoChiffrage = await cipher.finalize()
+  //   // console.debug("!!! InfoChiffrage : %O", infoChiffrage)
+  //   // const meta = {iv: cipherInfo.iv, ...infoChiffrage.meta}
+
+  //   // Preparer commande MaitreDesCles
+  //   transformStream.commandeMaitredescles = await preparerCommandeMaitrecles(
+  //     certificatsPem, cipherInfo.secretKey, domaine,
+  //     infoChiffrage.hachage, iv, infoChiffrage.tag,
+  //     identificateurs_document,
+  //     opts
+  //   )
+
+  //   // Ajouter cle chiffree pour cle de millegrille
+  //   transformStream.commandeMaitredescles.cles[certCaInfo.fingerprint] = cipherInfo.secretChiffre
+
+  //   debug("Resultat chiffrage disponible : %O", transformStream.commandeMaitredescles)
+  // })
 
   return transformStream
 }
