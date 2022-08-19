@@ -2,7 +2,7 @@ const debug = require('debug')('media:transformationImages')
 const fs = require('fs')
 const path = require('path')
 const tmp = require('tmp-promise')
-const im = require('imagemagick')
+const im = require('@dugrema/imagemagick')
 const FFmpeg = require('fluent-ffmpeg')
 
 const {chiffrerMemoire} = require('./cryptoUtils')
@@ -488,24 +488,32 @@ function genererSnapshotVideoPromise(sourcePath, previewPath) {
 
 function readIdentify(filepath) {
   return new Promise((resolve, reject)=>{
-    im.identify(filepath + '[0]', (err, metadata)=>{
-      if(err) return reject(err)
-      resolve(metadata)
-    })
+    try {
+      im.identify(filepath + '[0]', (err, metadata)=>{
+        if(err) return reject(err)
+        resolve(metadata)
+      })
+    } catch(err) {
+      reject(err)
+    }
   })
 }
 
 function readIdentifyFrames(filepath) {
   /* Detecter nombre de frames (images animees) */
   return new Promise((resolve, reject)=>{
-    im.identify(['-format', '%n;', filepath], (err, info)=>{
-      if(err) return reject(err)
-      try {
-        resolve(Number(info.split(';')[0]))
-      } catch(err) {
-        return resolve(1)
-      }
-    })
+    try {
+      im.identify(['-format', '%n;', filepath], (err, info)=>{
+        if(err) return reject(err)
+        try {
+          resolve(Number(info.split(';')[0]))
+        } catch(err) {
+          return resolve(1)
+        }
+      })
+    } catch(err) {
+      reject(err)
+    }
   })
 }
 
