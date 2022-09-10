@@ -505,7 +505,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       // fichierOutputTmp.cleanup().catch(err=>{debug("Err cleanup fichier video tmp (OK) : %O", err)})
     }
 
-    await storeConsignation.stagingReady(mq, transactionAssocierVideo, commandeMaitrecles, uuidCorrelation)
+    await storeConsignation.stagingReady(mq, hachage, transactionAssocierVideo, uuidCorrelation, {commandeMaitrecles})
     progressCb({percent: 100}, {etat: 'termine'})
     
     // const probeInfo = resultatTranscodage.probe

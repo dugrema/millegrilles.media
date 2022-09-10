@@ -125,24 +125,43 @@ async function creerOutputstreamChiffrage(certificatsPem, identificateurs_docume
     }
   }
 
-  // transformStream.on('end', async _ =>{
-  //   const infoChiffrage = await cipher.finalize()
-  //   // console.debug("!!! InfoChiffrage : %O", infoChiffrage)
-  //   // const meta = {iv: cipherInfo.iv, ...infoChiffrage.meta}
+  return transformStream
+}
 
-  //   // Preparer commande MaitreDesCles
-  //   transformStream.commandeMaitredescles = await preparerCommandeMaitrecles(
-  //     certificatsPem, cipherInfo.secretKey, domaine,
-  //     infoChiffrage.hachage, iv, infoChiffrage.tag,
-  //     identificateurs_document,
-  //     opts
-  //   )
+async function creerOutputstreamChiffrageParSecret(key, opts) {
+  opts = opts || {}
 
-  //   // Ajouter cle chiffree pour cle de millegrille
-  //   transformStream.commandeMaitredescles.cles[certCaInfo.fingerprint] = cipherInfo.secretChiffre
+  const cipherInfo = await preparerCipher({key}, opts)
+  const cipher = cipherInfo.cipher
 
-  //   debug("Resultat chiffrage disponible : %O", transformStream.commandeMaitredescles)
-  // })
+  const transformStream = new Transform()
+
+  transformStream._transform = async (chunk, encoding, next) => {
+    const cipherChunk = await cipher.update(chunk)
+    next(null, cipherChunk)
+  }
+
+  transformStream._flush = async next => {
+    try {
+      const resultatChiffrage = await cipher.finalize()
+      
+      // Permet d'extraire les params de chiffrage comme tag, header, hachage, etc.
+      transformStream.resultatChiffrage = resultatChiffrage  
+
+      // // Preparer commande MaitreDesCles
+      // transformStream.commandeMaitredescles = await preparerCommandeMaitrecles(
+      //   certificatsPem, cipherInfo.secretKey, domaine, resultatChiffrage.hachage, identificateurs_document,
+      //   {...opts, ...resultatChiffrage}
+      // )
+
+      // // Ajouter cle chiffree pour cle de millegrille
+      // transformStream.commandeMaitredescles.cles[certCaInfo.fingerprint] = cipherInfo.secretChiffre
+
+      next(null, resultatChiffrage.ciphertext)  // Emettre derniers bytes
+    } catch(err) {
+      next(err)
+    }
+  }
 
   return transformStream
 }
@@ -195,11 +214,57 @@ async function chiffrerMemoire(pki, fichierSrc, clesPubliques, opts) {
 
 }
 
+async function chiffrerMemoireSecret(fichierSrc, cleSecrete, opts) {
+  opts = opts || {}
+
+  // Creer cipher
+  const cipherStream = await creerOutputstreamChiffrageParSecret(cleSecrete, opts)
+  
+  let positionBuffer = 0
+  const buffer = new Uint8Array(64*1024); // On ne devrait pas chiffrer de contenu en memoire qui depasse 1 block de cipher
+
+  const promiseDone = new Promise(async (resolve, reject)=>{
+    cipherStream.on('error', err=>reject(err))
+    cipherStream.on('data', async data => {
+      buffer.set(data, positionBuffer)
+      positionBuffer += data.length
+    })
+    cipherStream.on('end', resolve)
+    cipherStream.on('error', reject)
+  })
+
+  const s = fs.ReadStream(fichierSrc)
+  s.pipe(cipherStream)
+
+  await promiseDone
+
+  debug("Resultat cipher stream : %O, buffer chiffre (len: %d): %O", cipherStream, positionBuffer, buffer)
+  const {resultatChiffrage} = cipherStream
+
+  let outputBuffer = buffer.slice(0, positionBuffer)
+  if(opts.base64 === true) {
+    // Convertir les bytes en base64
+    outputBuffer = base64.encode(outputBuffer)
+  }
+
+  debug("Information chiffrage fichier : %O", resultatChiffrage)
+  return {
+    tailleFichier: positionBuffer,
+    data: outputBuffer,
+    hachage: resultatChiffrage.hachage,
+    meta: resultatChiffrage,
+    // commandeMaitreCles: commandeMaitredescles
+  }
+
+}
+
 module.exports = {
   getDecipherPipe4fuuid, 
   decipherTransform,
   // DecipherTransformStream,
   // gcmStreamReaderFactory,
   creerOutputstreamChiffrage,
+  creerOutputstreamChiffrageParSecret,
   chiffrerMemoire,
+  chiffrerMemoireSecret,
 }

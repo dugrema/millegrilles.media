@@ -5,13 +5,13 @@ const tmp = require('tmp-promise')
 const im = require('@dugrema/imagemagick')
 const FFmpeg = require('fluent-ffmpeg')
 
-const {chiffrerMemoire} = require('./cryptoUtils')
+const {chiffrerMemoireSecret} = require('./cryptoUtils')
 const {probeVideo} = require('./transformationsVideo')
 
 async function genererPosterVideo(sourcePath, opts) {
   // Preparer fichier destination decrypte
   // Aussi preparer un fichier tmp pour le thumbnail
-  const {mq, clesPubliques, fuuid} = opts
+  const {mq, clesPubliques, fuuid, cleSecrete} = opts
 
   const tmpFile = await tmp.file({ mode: 0o600, postfix: '.jpg' })
 
@@ -35,7 +35,8 @@ async function genererPosterVideo(sourcePath, opts) {
     const promisesConversions = await convertir(
       mq,
       // chiffrerTemporaire, deplacerVersStorage,
-      clesPubliques,
+      // clesPubliques,
+      cleSecrete,
       sourceImage,
       // pathConsignation,
       fuuid,
@@ -66,7 +67,7 @@ async function genererPosterVideo(sourcePath, opts) {
 async function genererConversionsImage(sourcePath, opts) {
   debug("genererConversionsImage avec %s", sourcePath)
   const {
-    mq, clesPubliques, fuuid,
+    mq, clesPubliques, fuuid, cleSecrete,
     //chiffrerTemporaire, deplacerVersStorage, pathConsignation,
   } = opts
 
@@ -79,7 +80,8 @@ async function genererConversionsImage(sourcePath, opts) {
   const promisesConversions = await convertir(
     mq,
     // chiffrerTemporaire, deplacerVersStorage,
-    clesPubliques,
+    // clesPubliques,
+    cleSecrete,
     sourcePath,
     // pathConsignation,
     fuuid,
@@ -98,7 +100,8 @@ async function genererConversionsImage(sourcePath, opts) {
 async function convertir(
   mq,
   // chiffrerTemporaire, deplacerVersStorage,
-  clesPubliques,
+  // clesPubliques,
+  cleSecrete,
   sourcePath,
   // pathConsignation,
   fuuid,
@@ -157,10 +160,11 @@ async function convertir(
         // Le thumbnail est extrait et conserve dans la base de donnees
         // Chiffrer le resultat, conserver information pour transactions maitre des cles
         // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs3' })
-        const resultatChiffrage = await chiffrerMemoire(mq.pki, fichierTmp.path, clesPubliques, {
-          base64: true,
-          identificateurs_document: {type: 'image', fuuid_reference: fuuid},
-        })
+        // const resultatChiffrage = await chiffrerMemoire(mq.pki, fichierTmp.path, clesPubliques, {
+        //   base64: true,
+        //   identificateurs_document: {type: 'image', fuuid_reference: fuuid},
+        // })
+        const resultatChiffrage = await chiffrerMemoireSecret(fichierTmp.path, cleSecrete, { base64: true })
 
         // Traitement special pour thumbnail, on l'insere inline
         // data = await preparerBase64(fichierChiffreTmp.path)
@@ -174,8 +178,10 @@ async function convertir(
             hachage: resultatChiffrage.hachage,
             taille: resultatChiffrage.tailleFichier,
             data_chiffre: resultatChiffrage.data,
+            header: resultatChiffrage.meta.header,
+            format: resultatChiffrage.meta.format,
           },
-          commandeMaitreCles: resultatChiffrage.commandeMaitreCles,
+          // commandeMaitreCles: resultatChiffrage.commandeMaitreCles,
         }
 
       }

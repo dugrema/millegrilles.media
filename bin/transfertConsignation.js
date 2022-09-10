@@ -1,5 +1,5 @@
 // Effectue le transfert avec le serveur de consignation
-const debug = require('debug')('millegrilles:transfertConsignation')
+const debug = require('debug')('transfertConsignation')
 const { pipeline } = require('node:stream');
 const axios = require('axios')
 const https = require('https')
@@ -14,7 +14,7 @@ const readdirp = require('readdirp')
 
 const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
 
-const {getDecipherPipe4fuuid, decipherTransform, creerOutputstreamChiffrage} = require('./cryptoUtils')
+const {decipherTransform, creerOutputstreamChiffrageParSecret} = require('./cryptoUtils')
 
 const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
       ACTION_SAUVEGARDERCLE = 'sauvegarderCle',
@@ -247,7 +247,10 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
 
 // Chiffre et upload un fichier cree localement
 // Supprime les fichiers source et chiffres
-async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_document) {
+async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_document, opts) {
+  opts = opts || {}
+  const cleSecrete = opts.cle
+
   // debug("Upload fichier traite : %s", pathFichier)
   // debug("CLES PUBLIQUES : %O", clesPubliques)
   const pathStr = pathFichier.path || pathFichier
@@ -259,8 +262,9 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
     const readStream = fs.createReadStream(pathStr)
 
     // Creer stream chiffrage
-    const infoCertCa = {cert: mq.pki.caForge, fingerprint: mq.pki.fingerprintCa}
-    const chiffrageStream = await creerOutputstreamChiffrage(clesPubliques, identificateurs_document, 'GrosFichiers', infoCertCa)
+    // const infoCertCa = {cert: mq.pki.caForge, fingerprint: mq.pki.fingerprintCa}
+    // const chiffrageStream = await creerOutputstreamChiffrage(clesPubliques, identificateurs_document, 'GrosFichiers', infoCertCa)
+    const chiffrageStream = await creerOutputstreamChiffrageParSecret(cleSecrete)
     readStream.pipe(chiffrageStream)
 
     await _storeConsignation.stagingStream(
@@ -268,19 +272,28 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
       {TAILLE_SPLIT: UPLOAD_TAILLE_BLOCK, PATH_STAGING: PATH_MEDIA_STAGING}
     )
 
+    debug("Fin Chiffrage Stream : %O", chiffrageStream)
+
     // Signer commande maitre des cles
-    var commandeMaitrecles = chiffrageStream.commandeMaitredescles
+    // var commandeMaitrecles = chiffrageStream.commandeMaitredescles
     const resultatChiffrage = chiffrageStream.resultatChiffrage || {},
-          taille = resultatChiffrage.taille
+          {taille, hachage, header, format} = resultatChiffrage
 
-    const partition = commandeMaitrecles._partition
-    delete commandeMaitrecles['_partition']
-    commandeMaitrecles = await mq.pki.formatterMessage(
-      commandeMaitrecles, DOMAINE_MAITREDESCLES, {action: ACTION_SAUVEGARDERCLE, partition})
+    // const partition = commandeMaitrecles._partition
+    // delete commandeMaitrecles['_partition']
+    // commandeMaitrecles = await mq.pki.formatterMessage(
+    //   commandeMaitrecles, DOMAINE_MAITREDESCLES, {action: ACTION_SAUVEGARDERCLE, partition})
 
-    debug("Commande maitre des cles signee : %O", commandeMaitrecles)
+    // debug("Commande maitre des cles signee : %O", commandeMaitrecles)
 
-    return {uuidCorrelation, commandeMaitrecles, hachage: commandeMaitrecles.hachage_bytes, taille}
+    return {
+      uuidCorrelation, 
+      // commandeMaitrecles, 
+      hachage, 
+      taille,
+      header,
+      format
+    }
 
   } catch(e) {
     debug("Erreur upload fichier traite %s, DELETE tmp serveur. Erreur : %O", uuidCorrelation, e)
