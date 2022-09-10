@@ -1,4 +1,4 @@
-const debug = require('debug')('millegrilles:messages:media')
+const debug = require('debug')('messages:media')
 const traitementMedia = require('../traitementMedia.js')
 const { traiterCommandeTranscodage, progressUpdate } = require('../transformationsVideo')
 // const transfertConsignation = require('../transfertConsignation')
