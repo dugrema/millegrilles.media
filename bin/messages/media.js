@@ -339,7 +339,7 @@ async function genererPreviewVideo(message) {
     return
   }
   const cleFichier = await recupererCle(_mq, hachageFichier)
-  const {cleDechiffree, informationCle, clesPubliques} = cleFichier
+  const {cleSymmetrique, informationCle, clesPubliques} = cleFichier
 
   // Downloader et dechiffrer le fichier
   try {
@@ -354,7 +354,7 @@ async function genererPreviewVideo(message) {
   // const domaineActionAssocierPreview = 'GrosFichiers.associerPreview'
   var resultatConversion = null
   try {
-    const optsConversion = {cleSymmetrique: cleDechiffree, metaCle: informationCle, clesPubliques}
+    const optsConversion = {cleSecrete: cleSymmetrique, metaCle: informationCle, clesPubliques}
     debug("Debut generation preview")
     resultatConversion = await traitementMedia.genererPreviewVideo(_mq, fichierDechiffre, message, optsConversion)
     debug("Fin traitement preview, resultat : %O", resultatConversion)
@@ -386,7 +386,7 @@ async function genererPreviewVideo(message) {
     transactionAssocier.anime = true
   
     // Extraire information d'images converties sous un dict
-    const images = await traiterConversions(hachageFichier, conversions, clesPubliques, transactionAssocier)
+    await traiterConversions(hachageFichier, conversions, clesPubliques, transactionAssocier, cleFichier)
     // transactionAssocier.images = images
   
     // debug("Transaction associer images converties : %O", transactionAssocier)
@@ -458,7 +458,7 @@ async function _traiterCommandeTranscodage(message) {
   }
 
   const cleFichier = await recupererCle(_mq, fuuid)
-  const {cleDechiffree, informationCle, clesPubliques} = cleFichier
+  const {cleSymmetrique, informationCle, clesPubliques} = cleFichier
 
   debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", fuuid, informationCle)
 
@@ -486,7 +486,7 @@ async function _traiterCommandeTranscodage(message) {
   try {
     debug("_traiterCommandeTranscodage fichier temporaire: %s", fichierDechiffre)
 
-    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, reponseGetJob, _storeConsignation)
+    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, reponseGetJob, _storeConsignation, {cleSecrete: cleSymmetrique})
       .catch(err=>{
         debug("media._traiterCommandeTranscodage ERROR Erreur transcodage  %s: %O", fuuid, err)
         return {ok: false, err: 'Erreur transcodage '+err}

@@ -403,7 +403,9 @@ async function stopCommand(commandeFfmpeg) {
 //   return promiseOutput
 // }
 
-async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, message, storeConsignation) {
+async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, message, storeConsignation, opts) {
+  opts = opts || {}
+  const { cleSecrete } = opts
   debug("Commande traiterCommandeTranscodage video recue : %O", message)
 
   // Verifier si le preview est sur une image chiffree - on va avoir une permission de dechiffrage
@@ -474,9 +476,10 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
 
       // resultatUpload = await uploaderFichierTraite(mq, fichierOutputTmp.path, clesPubliques, identificateurs_document)
       const stagingInfo = await transfertConsignation.stagerFichier(
-        mq, fichierOutputTmp.path, clesPubliques, identificateurs_document, storeConsignation)
+        mq, fichierOutputTmp.path, clesPubliques, identificateurs_document, {cle: cleSecrete})
       // debug("Video Staging info : %O", stagingInfo)
-      var {uuidCorrelation, commandeMaitrecles, hachage, taille} = stagingInfo
+      // var {uuidCorrelation, commandeMaitrecles, hachage, taille} = stagingInfo
+      var {uuidCorrelation, hachage, taille, header, format} = stagingInfo
       uuidCorrelationCleanup = uuidCorrelation
       
       const probeInfo = resultatTranscodage.probe
@@ -495,6 +498,8 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
         bitrate: resultatTranscodage.video.videoBitrate,
         quality: videoQuality,
         taille_fichier: taille,
+        header,
+        format,
       }
       transactionAssocierVideo = await mq.pki.formatterMessage(
         transactionAssocierVideo, 'GrosFichiers', {action: 'associerVideo', ajouterCertificat: true})
@@ -505,7 +510,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       // fichierOutputTmp.cleanup().catch(err=>{debug("Err cleanup fichier video tmp (OK) : %O", err)})
     }
 
-    await storeConsignation.stagingReady(mq, hachage, transactionAssocierVideo, uuidCorrelation, {commandeMaitrecles})
+    await storeConsignation.stagingReady(mq, hachage, transactionAssocierVideo, uuidCorrelation)
     progressCb({percent: 100}, {etat: 'termine'})
     
     // const probeInfo = resultatTranscodage.probe

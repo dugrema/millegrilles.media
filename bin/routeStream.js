@@ -35,17 +35,13 @@ async function downloadVideoPrive(req, res, next) {
         if(!cacheEntry) {
             debug("Cache MISS sur %s dechiffre", fuuid)
 
-            // Recuperer la cle
-            debug("Demande cle dechiffrage")
-            const cleDechiffrage = await recupererCle(mq, fuuid)
-            debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
-
             // Recuperer information sur le GrosFichier (pour mimetype, nom du fichier)
             const requete = {fuuids_documents: [fuuid]}
             const reponseFichiers = await mq.transmettreRequete(
                 'GrosFichiers', requete, 
                 {action: 'documentsParFuuid', exchange: '2.prive', attacherCertificat: true}
             )
+
             if(!reponseFichiers || reponseFichiers.ok === false) {
                 debug("Erreur dans reponse fichiers : %O", reponseFichiers)
                 return {ok: false, err: `fuuid inconnu ou err : ${fuuid}`}
@@ -56,6 +52,12 @@ async function downloadVideoPrive(req, res, next) {
             const fichierMetadata = reponseFichiers.fichiers.pop()
             debug("Fichier metadata: %O", fichierMetadata)
 
+            // Recuperer la cle, utiliser fuuid fichier pour ref_hachage_bytes
+            const ref_hachage_bytes = fichierMetadata.fuuid_v_courante
+            // debug("Demande cle dechiffrage")
+            const cleDechiffrage = await recupererCle(mq, ref_hachage_bytes)
+            // debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
+            
             // Verifier si on prend l'original
             let infoVideo = null
             if(fichierMetadata.fuuid_v_courante === fuuid) {
@@ -81,12 +83,18 @@ async function downloadVideoPrive(req, res, next) {
 
             // Stager le fichier dechiffre
             try {
-                debug("Stager fichier %s", fuuid)
+                // Override champs cle
+                for (const champ of ['header', 'format']) {
+                    if(infoVideo[champ]) cleDechiffrage.metaCle[champ] = infoVideo[champ]
+                }
+
+                // debug("Stager fichier %s : %O", fuuid, cleDechiffrage)
                 cacheEntry = await req.transfertConsignation.getDownloadCacheFichier(
                     fuuid, mimetype, cleDechiffrage, {metadata: paramsGrosFichiers})
                 
                 // Attendre fin du dechiffrage
                 await cacheEntry.ready
+                debug("Cache ready pour %s", fuuid)
             } catch(err) {
                 debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
                 return res.sendStatus(500)
