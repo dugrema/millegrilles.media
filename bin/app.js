@@ -36,16 +36,17 @@ function initialiser(mq, opts) {
 
   const traitementStream = initRouteStream(mq, opts)
   app.all('/stream_transfert/*', traitementStream)
+  app.all('/*/streams/*', traitementStream)
 
   // catch 404 and forward to error handler
   app.use(function(req, res, next) {
-    console.error("Ressource inconnue");
+    console.error("app Ressource inconnue : ", req.url);
     res.sendStatus(404);
   })
 
   // error handler
   app.use(function(err, req, res, next) {
-    console.error("Erreur generique\n%O", err);
+    console.error("app Erreur generique\n%O", err);
     res.sendStatus(err.status || 500);
   })
 

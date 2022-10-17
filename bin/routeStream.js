@@ -11,6 +11,8 @@ const STAGING_FILE_TIMEOUT_MSEC = 300000
 function route(opts) {
     const router = express.Router();
   
+    router.get('/*/streams/:fuuid', downloadVideoPrive, pipeReponse)
+    router.get('/*/streams/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
     router.get('/stream_transfert/:fuuid', downloadVideoPrive, pipeReponse)
     router.get('/stream_transfert/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
   
