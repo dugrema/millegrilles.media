@@ -373,6 +373,11 @@ async function genererPreviewVideo(message) {
       videoBitrate:  probeVideo.raw.bitrate,
     }
 
+    let duration = null
+    if(probeVideo.raw.duration !== 'N/A') {
+      duration = Math.round(probeVideo.raw.duration * 1000) / 1000.0  // Arrondir a la millisec
+    }
+
     const transactionAssocier = {
       tuuid: message.tuuid,
       fuuid: message.fuuid,
@@ -380,7 +385,7 @@ async function genererPreviewVideo(message) {
       height: probeVideo.height,
       mimetype: mimetype,
       videoCodec: probeVideo.raw.codec_name,
-      duration: probeVideo.raw.duration!=='N/A'?probeVideo.raw.duration:null,
+      duration,
       metadata,
     }
     transactionAssocier.anime = true
