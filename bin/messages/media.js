@@ -5,6 +5,7 @@ const { traiterCommandeTranscodage, progressUpdate } = require('../transformatio
 const { recupererCle } = require('../pki')
 
 const urlServeurIndex = process.env.MG_ELASTICSEARCH_URL || 'http://elasticsearch:9200'
+const activerQueuesProcessing = process.env.DISABLE_Q_PROCESSING?false:true
 
 const EXPIRATION_MESSAGE_DEFAUT = 15 * 60 * 1000,  // 15 minutes en millisec
       EXPIRATION_COMMANDE_TRANSCODAGE = 30 * 60 * 1000  // 30 minutes en millisec
@@ -35,7 +36,7 @@ function setStoreConsignation(mq, storeConsignation, transfertConsignation) {
 
 // Appele lors d'une reconnexion MQ
 function on_connecter() {
-  enregistrerChannel()
+  if(activerQueuesProcessing) enregistrerChannel()
 }
 
 function enregistrerChannel() {

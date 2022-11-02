@@ -5,6 +5,8 @@ const { MilleGrillesPKI, MilleGrillesAmqpDAO } = require('@dugrema/millegrilles.
 const EXPIRATION_MESSAGE_DEFAUT = 30 * 60 * 1000  // minutes en millisec
 const EXPIRATION_MESSAGE_VIDEO = 10 * 60 * 1000   // minutes en millisec
 
+const activerQueuesProcessing = process.env.DISABLE_Q_PROCESSING?false:true
+
 async function init(opts) {
   opts = opts || {}
 
@@ -31,15 +33,16 @@ async function init(opts) {
 
   // Connecter a MilleGrilles avec AMQP DAO
   // const nomsQCustom = ['image', 'video', 'publication']
-  const qCustom = {
-    'image': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/image'},
-    'pdf': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/pdf'},
+  const qCustom = {}
+  if(activerQueuesProcessing) {
+      qCustom.image = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/image'}
+      qCustom.pdf = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/pdf'}
+      
+      // transcodage peut prendre plus de 30 minutes (ACK timeout)
+      qCustom.video = {ttl: EXPIRATION_MESSAGE_VIDEO, name: 'media/video', preAck: true}
 
-    // transcodage peut prendre plus de 30 minutes (ACK timeout)
-    'video': {ttl: EXPIRATION_MESSAGE_VIDEO, name: 'media/video', preAck: true},
-
-    // indexation peut prendre plus de 30 minutes (ACK timeout)
-    'indexation': {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation', preAck: true},
+      // indexation peut prendre plus de 30 minutes (ACK timeout)
+      qCustom.indexation = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation', preAck: true}
   }
   const amqpdao = new MilleGrillesAmqpDAO(instPki, {qCustom})
   const mqConnectionUrl = process.env.MG_MQ_URL;
