@@ -105,4 +105,7 @@ async function healthCheck(server, instAmqpdao) {
 }
 
 // Executer
-init().catch(err=>console.error("Erreur initialisation media : %O", err))
+init().catch(err=>{
+  console.error("Erreur initialisation media : %O", err)
+  process.exit()
+})
