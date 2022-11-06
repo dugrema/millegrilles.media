@@ -26,15 +26,15 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
 
 const downloadCache = {}
 
-var _urlServeurConsignation = null,
-    _httpsAgent = null,
+//var _urlServeurConsignation = null,
+var _httpsAgent = null,
     _storeConsignation = null,
     _intervalEntretien = setInterval(entretien, INTERVALLE_ENTRETIEN)
 
-function init(urlServeurConsignation, amqpdao, storeConsignation) {
-  debug("Initialiser transfertConsignation avec url %s", urlServeurConsignation)
+function init(amqpdao, storeConsignation) {
+  debug("Initialiser transfertConsignation avec url %s", storeConsignation.getUrlTransfert())
   
-  _urlServeurConsignation = new URL(''+urlServeurConsignation).href  // Cleanup URL
+  // _urlServeurConsignation = new URL(''+urlServeurConsignation).href  // Cleanup URL
 
   _storeConsignation = storeConsignation
 
@@ -111,7 +111,7 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
 
   let downloadCacheFichier = downloadCache[hachage_bytes]
   if(!downloadCacheFichier) {
-    const url = new URL(''+_urlServeurConsignation)
+    const url = new URL(''+_storeConsignation.getUrlTransfert())
     url.pathname = path.join(url.pathname, hachage_bytes)
     debug("Url download fichier : %O", url)
   
@@ -257,7 +257,7 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
   const cleanup = pathFichier.cleanup
 
   const uuidCorrelation = ''+uuidv4()
-  const url = new URL(_urlServeurConsignation)
+  const url = new URL(_storeConsignation.getUrlTransfert())
   try {
     const readStream = fs.createReadStream(pathStr)
 
