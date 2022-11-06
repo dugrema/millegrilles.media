@@ -18,8 +18,7 @@ ENV PORT=443 \
     MG_MQ_KEYFILE=/run/secrets/key.pem \
     MG_MQ_CAFILE=/run/secrets/millegrille.cert.pem \
     WEB_CERT=/run/secrets/cert.pem \
-    WEB_KEY=/run/secrets/key.pem \
-    MG_CONSIGNATION_URL=https://fichiers:443/fichiers_transfert
+    WEB_KEY=/run/secrets/key.pem
 
 EXPOSE 443
 
