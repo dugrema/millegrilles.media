@@ -63,16 +63,21 @@ function detecterModeStream(mq) {
     const cert = mq.pki.cert
     const extensions = extraireExtensionsMillegrille(cert)
 
-    // console.debug("!!! Extensions : ", extensions)
+    debug("Extensions certificat : ", extensions)
     const roles = extensions.roles || []
     const niveauxSecurite = extensions.niveauxSecurite || []
+
+    if(niveauxSecurite.includes('4.secure')) {
+      // On a un certificat qui permet de dechiffrer directement sans passer par GrosFichiers
+      return false
+    }
 
     if(roles.includes('stream') && niveauxSecurite.includes('2.prive')) {
         console.info("*** Activation mode streaming pour rechiffrage cles ***")
         return true
     }
 
-    return false
+    throw new Error("Certificat sans permission de dechiffrage : ", extensions)
 }
 
 module.exports = {initialiser}
