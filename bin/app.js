@@ -1,6 +1,7 @@
 const debug = require('debug')('media:app')
-var express = require('express')
-var path = require('path')
+const express = require('express')
+const path = require('path')
+const { extraireExtensionsMillegrille } = require('@dugrema/millegrilles.utiljs/src/forgecommon')
 
 const initRouteStream = require('./routeStream')
 const {verificationCertificatSSL} = require('./pki')
@@ -9,6 +10,8 @@ function initialiser(mq, opts) {
   debug("Initialiser app, opts : %O", opts)
   opts = opts || {}
   const middleware = opts.middleware
+
+  const modeStream = detecterModeStream(mq)
 
   var app = express()
 
@@ -34,7 +37,7 @@ function initialiser(mq, opts) {
 
   app.use(express.static(path.join(__dirname, 'public')))
 
-  const traitementStream = initRouteStream(mq, opts)
+  const traitementStream = initRouteStream(mq, {...opts, stream: modeStream})
   app.all('/stream_transfert/*', traitementStream)
   app.all('/*/streams/*', traitementStream)
 
@@ -54,6 +57,22 @@ function initialiser(mq, opts) {
   //setInterval(cleanupStaging, 5 * 60 * 1000)  // Cleanup aux 5 minutes
 
   return app;
+}
+
+function detecterModeStream(mq) {
+    const cert = mq.pki.cert
+    const extensions = extraireExtensionsMillegrille(cert)
+
+    // console.debug("!!! Extensions : ", extensions)
+    const roles = extensions.roles || []
+    const niveauxSecurite = extensions.niveauxSecurite || []
+
+    if(roles.includes('stream') && niveauxSecurite.includes('2.prive')) {
+        console.info("*** Activation mode streaming pour rechiffrage cles ***")
+        return true
+    }
+
+    return false
 }
 
 module.exports = {initialiser}

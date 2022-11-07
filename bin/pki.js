@@ -6,7 +6,8 @@ const PEM_CERT_DEBUT = '-----BEGIN CERTIFICATE-----'
 const PEM_CERT_FIN = '-----END CERTIFICATE-----'
 const L2PRIVE = '2.prive'
 
-async function recupererCle(mq, hachageFichier) {
+async function recupererCle(mq, hachageFichier, opts) {
+  opts = opts || {}
   const liste_hachage_bytes = [hachageFichier]
   // Note: permission n'est plus requise - le certificat media donne acces a toutes les cles (domaine=GrosFichiers)
   // Le message peut avoir une permission attachee
@@ -19,14 +20,26 @@ async function recupererCle(mq, hachageFichier) {
 
   if(reponseClesPubliques.ok === false || !reponseClesPubliques.certificat) {
     throw new Error("Erreur chargement reference maitre des cles")
-  }  const clesPubliques = [reponseClesPubliques.certificat]
+  }
+  const clesPubliques = [reponseClesPubliques.certificat]
 
   // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
-  const domaine = 'MaitreDesCles',
-        action = 'dechiffrage'
-  const requete = {liste_hachage_bytes}  //, permission}
+  let domaine = 'MaitreDesCles',
+      action = 'dechiffrage',
+      requete = {liste_hachage_bytes},
+      exchange = L2PRIVE
+
+  const cert = mq.pki.cert
+
+  if(opts.stream === true) {
+    // On a un certificat 2.prive pour streaming, faire la requete via GrosFichiers
+    domaine = 'GrosFichiers'
+    action = 'getClesFichiers'
+    requete = {fuuids: liste_hachage_bytes}
+  }
+
   debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
-  const reponseCle = await mq.transmettreRequete(domaine, requete, {action, ajouterCertificat: true, decoder: true})
+  const reponseCle = await mq.transmettreRequete(domaine, requete, {action, exchange, ajouterCertificat: true, decoder: true})
   debug("Reponse requete dechiffrage : %O", reponseCle)
   if(reponseCle.acces !== '1.permis') {
     return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}

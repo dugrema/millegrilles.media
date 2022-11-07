@@ -8,14 +8,18 @@ const { recupererCle } = require('./pki')
 
 const STAGING_FILE_TIMEOUT_MSEC = 300000
 
-function route(opts) {
+let _modeStream = false
+
+function route(mq, opts) {
     const router = express.Router();
   
     router.get('/*/streams/:fuuid', downloadVideoPrive, pipeReponse)
     router.get('/*/streams/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
     router.get('/stream_transfert/:fuuid', downloadVideoPrive, pipeReponse)
     router.get('/stream_transfert/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
-  
+
+    _modeStream = opts.stream || false
+
     return router
 }
 
@@ -57,7 +61,7 @@ async function downloadVideoPrive(req, res, next) {
             // Recuperer la cle, utiliser fuuid fichier pour ref_hachage_bytes
             const ref_hachage_bytes = fichierMetadata.fuuid_v_courante
             // debug("Demande cle dechiffrage")
-            const cleDechiffrage = await recupererCle(mq, ref_hachage_bytes)
+            const cleDechiffrage = await recupererCle(mq, ref_hachage_bytes, {stream: _modeStream})
             // debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
 
             if(!cleDechiffrage || !cleDechiffrage.metaCle) {
