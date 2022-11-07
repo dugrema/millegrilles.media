@@ -59,7 +59,12 @@ async function downloadVideoPrive(req, res, next) {
             // debug("Demande cle dechiffrage")
             const cleDechiffrage = await recupererCle(mq, ref_hachage_bytes)
             // debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
-            
+
+            if(!cleDechiffrage || !cleDechiffrage.metaCle) {
+                debug("Acces cle refuse : ", cleDechiffrage)
+                return res.sendStatus(403)
+            }
+
             // Verifier si on prend l'original
             let infoVideo = null
             if(fichierMetadata.fuuid_v_courante === fuuid) {
