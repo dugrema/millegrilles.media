@@ -6,10 +6,13 @@ const PEM_CERT_DEBUT = '-----BEGIN CERTIFICATE-----'
 const PEM_CERT_FIN = '-----END CERTIFICATE-----'
 const L2PRIVE = '2.prive'
 
-async function recupererCle(mq, userId, hachageFichier, opts) {
+async function recupererCle(mq, hachageFichier, opts) {
   opts = opts || {}
 
-  const domaine = opts.domaine || 'GrosFichiers'
+  const domaine = opts.domaine || 'GrosFichiers',
+        stream = opts.stream || false,
+        userId = opts.userId,
+        exchange = L2PRIVE
 
   const liste_hachage_bytes = [hachageFichier]
   // Note: permission n'est plus requise - le certificat media donne acces a toutes les cles (domaine=GrosFichiers)
@@ -26,25 +29,21 @@ async function recupererCle(mq, userId, hachageFichier, opts) {
   }
   const clesPubliques = [reponseClesPubliques.certificat]
 
-  // // Ajouter chaine de certificats pour indiquer avec quelle cle re-chiffrer le secret
-  // let domaine = 'MaitreDesCles',
-  //     action = 'dechiffrage',
-  //     requete = {liste_hachage_bytes},
-  const exchange = L2PRIVE
+  let action = 'getClesFichiers',
+      requete = { fuuids: liste_hachage_bytes }
 
-  // const cert = mq.pki.cert
-
-  // if(opts.stream === true) {
+  if(stream === true) {
     // On a un certificat 2.prive pour streaming, faire la requete via GrosFichiers
-  const action = 'getClesStream',
-        requete = {user_id: userId, fuuids: liste_hachage_bytes}
-  // }
+    action = 'getClesStream'
+    requete = { user_id: userId, fuuids: liste_hachage_bytes }
+  }
 
-  debug("Nouvelle requete dechiffrage cle a transmettre : %O", requete)
+  debug("Nouvelle requete dechiffrage cle a transmettre (domaine %s, action %s): %O", domaine, action, requete)
   const reponseCle = await mq.transmettreRequete(domaine, requete, {action, exchange, ajouterCertificat: true, decoder: true})
   debug("Reponse requete dechiffrage : %O", reponseCle)
   if(reponseCle.acces !== '1.permis') {
-    return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}
+    throw new Error(`Erreur cle ${hachageFichier} : ${reponseCle.acces}`)
+    // return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}
   }
   debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
 

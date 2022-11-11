@@ -70,8 +70,8 @@ async function downloadVideoPrive(req, res, next) {
             let domaine = 'GrosFichiers'
             if(roles.includes('messagerie_web')) domaine = 'Messagerie'
 
-            debug("Demande cle dechiffrage a %s", domaine)
-            const cleDechiffrage = await recupererCle(mq, userId, cleRefFuuid, {domaine})
+            debug("Demande cle dechiffrage a %s (stream: true)", domaine)
+            const cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
             debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
 
             if(!cleDechiffrage || !cleDechiffrage.metaCle) {
@@ -109,7 +109,7 @@ async function downloadVideoPrive(req, res, next) {
             // let paramsGrosFichiers = {nom: fichierMetadata.nom}
             let paramsGrosFichiers = {nom: fuuid + '.vid'}
 
-            let mimetype = null
+            let mimetype = res.mimetype
 
             // Stager le fichier dechiffre
             try {
@@ -273,8 +273,14 @@ async function verifierJwt(req, res, next) {
         // S'assurer que le certificat signataire est de type collections
         const roles = resultatToken.extensions.roles,
               niveauxSecurite = resultatToken.extensions.niveauxSecurite
-        if( ! roles.includes('messagerie_web') || ! niveauxSecurite.includes('2.prive') ) {
-            debug("verifierAutorisationStream JWT signe par mauvais type de certificat (doit etre messagerie/2.prive)")
+        
+              if( ! niveauxSecurite.includes('2.prive') ) {
+            debug("verifierAutorisationStream JWT signe par mauvais type de certificat (doit avoir exchange 2.prive)")
+            return res.sendStatus(403)
+        }
+        
+        if( ! roles.includes('messagerie_web') && ! roles.includes('collections') ) {
+            debug("verifierAutorisationStream JWT signe par mauvais type de certificat (doit etre collections/messagerie)")
             return res.sendStatus(403)
         }
 
@@ -291,6 +297,7 @@ async function verifierJwt(req, res, next) {
         res.header = payload.header
         res.iv = payload.iv
         res.tag = payload.tag
+        res.mimetype = payload.mimetype
         res.roles = roles
         res.jwt = resultatToken
 
