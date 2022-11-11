@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs')
 const fsPromises = require('fs/promises')
+const { verifierTokenFichier } = require('@dugrema/millegrilles.nodejs/src/jwt')
 
 const { recupererCle } = require('./pki')
 
@@ -12,11 +13,12 @@ let _modeStream = false
 
 function route(mq, opts) {
     const router = express.Router();
-  
-    router.get('/*/streams/:fuuid', downloadVideoPrive, pipeReponse)
-    router.get('/*/streams/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
-    router.get('/stream_transfert/:fuuid', downloadVideoPrive, pipeReponse)
-    router.get('/stream_transfert/:fuuid/*', downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
+
+    // Autorisation
+    router.get('/*/streams/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse)
+    router.get('/*/streams/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
+    router.get('/stream_transfert/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse)
+    router.get('/stream_transfert/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
 
     _modeStream = opts.stream || false
 
@@ -27,13 +29,17 @@ async function downloadVideoPrive(req, res, next) {
     debug("downloadVideoPrive methode:" + req.method + ": " + req.url);
     debug("Headers : %O\nAutorisation: %o", req.headers, req.autorisationMillegrille);
 
-    const fuuid = req.params.fuuid
-    res.fuuid = fuuid
-    debug("downloadVideoPrive Fuuid : %s", fuuid)
-
     var mq = req.amqpdao
+    const fuuid = res.fuuid,
+          userId = res.userId,
+          cleRefFuuid = res.cleRefFuuid,
+          format = res.format,
+          header = res.header,
+          iv = res.iv,
+          tag = res.tag,
+          roles = res.roles || []
 
-    debug("Verifier l'acces est autorise %s", req.url)
+    debug("Verifier l'acces est autorise %s, ref fuuid %s", req.url, cleRefFuuid)
 
     // Demander une permission de dechiffrage et stager le fichier.
     try {
@@ -42,27 +48,31 @@ async function downloadVideoPrive(req, res, next) {
             debug("Cache MISS sur %s dechiffre", fuuid)
 
             // Recuperer information sur le GrosFichier (pour mimetype, nom du fichier)
-            const requete = {fuuids_documents: [fuuid]}
-            const reponseFichiers = await mq.transmettreRequete(
-                'GrosFichiers', requete, 
-                {action: 'documentsParFuuid', exchange: '2.prive', attacherCertificat: true}
-            )
+            // const requete = {fuuids_documents: [fuuid]}
+            // const reponseFichiers = await mq.transmettreRequete(
+            //     'GrosFichiers', requete, 
+            //     {action: 'documentsParFuuid', exchange: '2.prive', attacherCertificat: true}
+            // )
 
-            if(!reponseFichiers || reponseFichiers.ok === false) {
-                debug("Erreur dans reponse fichiers : %O", reponseFichiers)
-                return {ok: false, err: `fuuid inconnu ou err : ${fuuid}`}
-            }
+            // if(!reponseFichiers || reponseFichiers.ok === false) {
+            //     debug("Erreur dans reponse fichiers : %O", reponseFichiers)
+            //     return {ok: false, err: `fuuid inconnu ou err : ${fuuid}`}
+            // }
 
-            debug("Reponse info fichiers : %O", reponseFichiers)
+            // debug("Reponse info fichiers : %O", reponseFichiers)
 
-            const fichierMetadata = reponseFichiers.fichiers.pop()
-            debug("Fichier metadata: %O", fichierMetadata)
+            // const fichierMetadata = reponseFichiers.fichiers.pop()
+            // debug("Fichier metadata: %O", fichierMetadata)
 
             // Recuperer la cle, utiliser fuuid fichier pour ref_hachage_bytes
-            const ref_hachage_bytes = fichierMetadata.fuuid_v_courante
-            // debug("Demande cle dechiffrage")
-            const cleDechiffrage = await recupererCle(mq, ref_hachage_bytes, {stream: _modeStream})
-            // debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
+            //const ref_hachage_bytes = fichierMetadata.fuuid_v_courante
+ 
+            let domaine = 'GrosFichiers'
+            if(roles.includes('messagerie_web')) domaine = 'Messagerie'
+
+            debug("Demande cle dechiffrage a %s", domaine)
+            const cleDechiffrage = await recupererCle(mq, userId, cleRefFuuid, {domaine})
+            debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
 
             if(!cleDechiffrage || !cleDechiffrage.metaCle) {
                 debug("Acces cle refuse : ", cleDechiffrage)
@@ -70,36 +80,40 @@ async function downloadVideoPrive(req, res, next) {
             }
 
             // Verifier si on prend l'original
-            let infoVideo = null
-            if(fichierMetadata.fuuid_v_courante === fuuid) {
-                // S'assurer que c'est un video
-                infoVideo = fichierMetadata.version_courante
-            } else {
-                infoVideo = Object.values(fichierMetadata.version_courante.video).filter(item=>item.fuuid_video===fuuid).pop()
-            }
+            // let infoVideo = null
+            // if(fichierMetadata.fuuid_v_courante === fuuid) {
+            //     // S'assurer que c'est un video
+            //     infoVideo = fichierMetadata.version_courante
+            // } else {
+            //     infoVideo = Object.values(fichierMetadata.version_courante.video).filter(item=>item.fuuid_video===fuuid).pop()
+            // }
 
-            debug("Info video %s\n%O", fuuid, infoVideo)
-            if(!infoVideo) {
-                debug("Aucuns videos associes")
-                return res.sendStatus(404)
-            }
+            // debug("Info video %s\n%O", fuuid, infoVideo)
+            // if(!infoVideo) {
+            //     debug("Aucuns videos associes")
+            //     return res.sendStatus(404)
+            // }
 
-            const mimetype = infoVideo.mimetype
-            if(!mimetype.startsWith('video/')) {
-                debug("Le mimetype n'est pas video")
-                return res.sendStatus(403)
-            }
+            // const mimetype = infoVideo.mimetype
+            // if(!mimetype.startsWith('video/')) {
+            //     debug("Le mimetype n'est pas video")
+            //     return res.sendStatus(403)
+            // }
+            const metaCle = cleDechiffrage.metaCle
 
-            let paramsGrosFichiers = {nom: fichierMetadata.nom}
+            metaCle.header = header || metaCle.header
+            metaCle.iv = iv || metaCle.iv
+            metaCle.tag = tag || metaCle.tag
+            metaCle.format = format || metaCle.format
+
+            // let paramsGrosFichiers = {nom: fichierMetadata.nom}
+            let paramsGrosFichiers = {nom: fuuid + '.vid'}
+
+            let mimetype = null
 
             // Stager le fichier dechiffre
             try {
-                // Override champs cle
-                for (const champ of ['header', 'format']) {
-                    if(infoVideo[champ]) cleDechiffrage.metaCle[champ] = infoVideo[champ]
-                }
-
-                // debug("Stager fichier %s : %O", fuuid, cleDechiffrage)
+                debug("Stager fichier %s : %O", fuuid, cleDechiffrage)
                 cacheEntry = await req.transfertConsignation.getDownloadCacheFichier(
                     fuuid, mimetype, cleDechiffrage, {metadata: paramsGrosFichiers})
                 
@@ -237,6 +251,61 @@ function readRangeHeader(range, totalLength) {
         End: end,
     }
     return result
+}
+
+async function verifierJwt(req, res, next) {
+    const mq = req.amqpdao,
+          pki = mq.pki
+
+    const url = new URL('https://localhost' + req.url)
+    const jwt = url.searchParams.get('jwt')
+
+    const fuuid = req.params.fuuid
+    res.fuuid = fuuid
+    debug("downloadVideoPrive Fuuid : %s, Params: %O", fuuid, req.params)
+
+    debug("JWT token ", jwt)
+
+    try {
+        const resultatToken = await verifierTokenFichier(pki, jwt)
+        debug("verifierAutorisationStream Contenu token JWT (valide) : ", resultatToken)
+
+        // S'assurer que le certificat signataire est de type collections
+        const roles = resultatToken.extensions.roles,
+              niveauxSecurite = resultatToken.extensions.niveauxSecurite
+        if( ! roles.includes('messagerie_web') || ! niveauxSecurite.includes('2.prive') ) {
+            debug("verifierAutorisationStream JWT signe par mauvais type de certificat (doit etre messagerie/2.prive)")
+            return res.sendStatus(403)
+        }
+
+        if(fuuid !== resultatToken.payload.sub) {
+            debug("verifierAutorisationStream URL et JWT fuuid ne correspondent pas")
+            return res.sendStatus(403)  // Fuuid mismatch
+        }
+
+        // Verifier domaine
+        const payload = resultatToken.payload || {}
+        res.userId = payload.userId  // Utiliser userId du token
+        res.cleRefFuuid = payload.ref || fuuid
+        res.format = payload.format
+        res.header = payload.header
+        res.iv = payload.iv
+        res.tag = payload.tag
+        res.roles = roles
+        res.jwt = resultatToken
+
+        debug("verifierJwt Fuuid %s, userId %s", res.cleRefFuuid, res.userId)
+
+    } catch(err) {
+        if(err.code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED') {
+            debug("verifierAutorisationStream Token JWT invalide")
+            return res.sendStatus(403)
+        } else {
+            throw err
+        }
+    }
+
+    return next()
 }
 
 module.exports = route
