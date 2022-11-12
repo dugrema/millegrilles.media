@@ -107,7 +107,7 @@ async function downloadVideoPrive(req, res, next) {
             metaCle.format = format || metaCle.format
 
             // let paramsGrosFichiers = {nom: fichierMetadata.nom}
-            let paramsGrosFichiers = {nom: fuuid + '.vid'}
+            let paramsGrosFichiers = {nom: fuuid}
 
             let mimetype = res.mimetype
 
