@@ -20,7 +20,8 @@ const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
       KEY_CA_FILE = process.env.MG_MQ_KEYFILE,
       REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD,
       URL_CONSIGNATION_FICHIERS = process.env.MG_CONSIGNATION_URL,  // || 'https://fichiers:443/fichiers_transfert',
-      PATH_STAGING = process.env.PATH_STAGING || '/var/opt/millegrilles/consignation/staging/media'
+      PATH_STAGING = process.env.PATH_STAGING || '/var/opt/millegrilles/consignation/staging/media',
+      DESACTIVER_ROUTES = !!process.env.DESACTIVER_ROUTES
 
 // Preparer certificats, mots de passe
 function chargerCredendials() {
@@ -82,7 +83,12 @@ async function init() {
   ]
 
   const root = await initialiserApp(instAmqpdao, {middleware})
-  const server = initialiserServer(root)
+  let server = null
+  if(!DESACTIVER_ROUTES) {
+    server = initialiserServer(root)
+  } else {
+    debug("Desactiver routes / server https")
+  }
 
   // Hook pour un health check regulier (surtout pour connexion MQ)
   setInterval(()=>healthCheck(server, instAmqpdao).catch(err=>console.error("www.healthCheck ERROR : %O", err)), 60000)
@@ -98,7 +104,7 @@ async function healthCheck(server, instAmqpdao) {
     console.error("www.healthCheck Echec verification, fermeture du serveur")
     instAmqpdao.close()
       .then(()=>{
-        server.close()
+        if(server) server.close()
         process.exit()
       })
   }
