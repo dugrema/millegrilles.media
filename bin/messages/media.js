@@ -393,31 +393,6 @@ async function genererPreviewVideo(message) {
   
     // Extraire information d'images converties sous un dict
     await traiterConversions(hachageFichier, conversions, clesPubliques, transactionAssocier, cleFichier)
-    // transactionAssocier.images = images
-  
-    // debug("Transaction associer images converties : %O", transactionAssocier)
-  
-    // _mq.transmettreTransactionFormattee(
-    //   transactionAssocier, 'GrosFichiers', {action: 'associerConversions', exchange: '4.secure', ajouterCertificat: true}
-    // )
-    // .catch(err=>{
-    //   console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
-    //   debug("ERROR media.genererPreviewImage Erreur association conversions d'image message %O", message)
-    // })
-
-    // Probleme - transcodage video ici bloque la Q de traitement des images
-    // // Conversion videos 240p en mp4 et vp9
-    // const tuuid = message.tuuid
-    // const commandeMp4 = {
-    //   tuuid: tuuid, fuuid: hachageFichier, mimetype: 'video/mp4', videoBitrate: 250000, audioBitrate: '64k', height: 240,
-    // }
-    // const commandeVp9 = {
-    //   tuuid: tuuid, fuuid: hachageFichier, mimetype: 'video/webm', videoBitrate: 250000, audioBitrate: '64k', height: 320,
-    // }
-    // await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, commandeMp4)
-    //   .catch(err=>console.error("media._traiterCommandeTranscodage ERROR mp4 %s: %O", message.fuuid, err))
-    // await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, commandeVp9)
-    //   .catch(err=>console.error("media._traiterCommandeTranscodage ERROR webm %s: %O", message.fuuid, err))
 
   } finally {
     // maintenant autoclean
@@ -469,19 +444,24 @@ async function _traiterCommandeTranscodage(message) {
   debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", fuuid, informationCle)
 
   // Creer un progress cb regulier - utilise comme healthcheck pour eviter la reallocation de la conversion de fichier
-  const progressDownload = () => {
+  const progressDownload = params => {
+    params = params || {}
+    position = params.position || 0
+
     const {fuuid, cle_conversion } = message
     const [mimetype, videoCodec, heightStr, videoQuality ] = cle_conversion.split(';')
     const height = Number.parseInt(heightStr.replace('p', ''))
     const paramsVideo = {fuuid, mimetype, videoCodec, height, videoQuality, etat: 'downloading'}
     progressUpdate(_mq, paramsVideo, {percent: 0})
   }
+
   let timeoutProgressDownload = setTimeout(progressDownload, 20000)
+
   // Downloader et dechiffrer le fichier
   try {
     progressDownload()
     var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
-      fuuid, mimetype, cleFichier)
+      fuuid, mimetype, cleFichier, {progress: progressDownload})
   } catch(err) {
     debug("_traiterCommandeTranscodage Erreur download fichier avec downloaderFichierProtege : %O", err)
     return {ok: false, err: ''+err}
@@ -500,8 +480,7 @@ async function _traiterCommandeTranscodage(message) {
   } catch(err) {
     debug("media._traiterCommandeTranscodage ERROR Erreur transcodage %s: %O", fuuid, err)
     return {ok: false, err: 'Erreur transcodage '+err}
-}
-  finally {
+  } finally {
     // maintenant autoclean
     //if(cleanup) cleanup()
   }

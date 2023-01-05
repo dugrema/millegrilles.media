@@ -1,13 +1,10 @@
 // Effectue le transfert avec le serveur de consignation
 const debug = require('debug')('transfertConsignation')
-const { pipeline } = require('node:stream');
 const axios = require('axios')
 const https = require('https')
 const fs = require('fs')
 const fsPromises = require('fs/promises')
-// const tmp = require('tmp-promise')
 const {v4: uuidv4} = require('uuid')
-// const FormData = require('form-data')
 const path = require('path')
 
 const readdirp = require('readdirp')
@@ -34,8 +31,6 @@ var _httpsAgent = null,
 function init(amqpdao, storeConsignation) {
   debug("Initialiser transfertConsignation avec url %s", storeConsignation.getUrlTransfert())
   
-  // _urlServeurConsignation = new URL(''+urlServeurConsignation).href  // Cleanup URL
-
   _storeConsignation = storeConsignation
 
   fsPromises.mkdir(PATH_MEDIA_STAGING, {recursive: true}).catch(err=>console.error("ERROR Erreur mkdir %s", PATH_MEDIA_STAGING))
@@ -199,7 +194,7 @@ function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
             try {
               debug("Reponse download fichier : %O", reponseFichier.status)
               const writeStream = fs.createWriteStream(decryptedWorkPath)
-              await dechiffrerStream(reponseFichier.data, cleFichier, writeStream)
+              await dechiffrerStream(reponseFichier.data, cleFichier, writeStream, opts)
     
               await fsPromises.rename(decryptedWorkPath, decryptedPath)
             } finally {
@@ -308,13 +303,28 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
 
 }
 
-async function dechiffrerStream(stream, cleFichier, writeStream) {
+async function dechiffrerStream(stream, cleFichier, writeStream, opts) {
+  opts = opts || {}
   debug("dechiffrerStream cleFichier : %O", cleFichier)
   const decipherTransformStream = await decipherTransform(cleFichier.cleSymmetrique, {...cleFichier.metaCle})
 
+  const progress = opts.progress
+  let prochainUpdate = 0, position = 0
+
   const promiseTraitement = new Promise((resolve, reject)=>{
     try {
+      decipherTransformStream.on('data', chunk=>{
+        position += chunk.length
+
+        // Updates (keep-alive process)
+        const current = new Date().getTime()
+        if(prochainUpdate < current) {
+          if(progress) progress({position})
+          prochainUpdate = current + 5 * 60 * 1000  // 5 secondes
+        }
+      });
       decipherTransformStream.on('end', ()=>{
+        if(progress) progress({position, size: position, complete: true})
         resolve()
       });
       decipherTransformStream.on('error', err=>{

@@ -616,6 +616,7 @@ function progressUpdate(mq, paramsVideo, progress) {
     const contenuEvenement = {...paramsVideo, pctProgres, passe: progress.passe}
     // mq.emettreEvenement(contenuEvenement, domaineAction)
     mq.emettreEvenement(contenuEvenement, domaineAction, {exchange: '2.prive'})
+      .catch(err=>debug("Erreur emission transcodage progres (%O) : %O", contenuEvenement, err))
   }
 }
 
