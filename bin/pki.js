@@ -42,6 +42,7 @@ async function recupererCle(mq, hachageFichier, opts) {
   const reponseCle = await mq.transmettreRequete(domaine, requete, {action, exchange, ajouterCertificat: true, decoder: true})
   debug("Reponse requete dechiffrage : %O", reponseCle)
   if(reponseCle.acces !== '1.permis') {
+    debug("Cle acces refuse : ", reponseCle)
     throw new Error(`Erreur cle ${hachageFichier} : ${reponseCle.acces}`)
     // return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}
   }

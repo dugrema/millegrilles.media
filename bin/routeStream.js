@@ -9,8 +9,6 @@ const { recupererCle } = require('./pki')
 
 const STAGING_FILE_TIMEOUT_MSEC = 300000
 
-let _modeStream = false
-
 function route(mq, opts) {
     const router = express.Router();
 
@@ -19,8 +17,6 @@ function route(mq, opts) {
     router.get('/*/streams/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
     router.get('/stream_transfert/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse)
     router.get('/stream_transfert/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
-
-    _modeStream = opts.stream || false
 
     return router
 }
@@ -47,26 +43,6 @@ async function downloadVideoPrive(req, res, next) {
         if(!cacheEntry) {
             debug("Cache MISS sur %s dechiffre", fuuid)
 
-            // Recuperer information sur le GrosFichier (pour mimetype, nom du fichier)
-            // const requete = {fuuids_documents: [fuuid]}
-            // const reponseFichiers = await mq.transmettreRequete(
-            //     'GrosFichiers', requete, 
-            //     {action: 'documentsParFuuid', exchange: '2.prive', attacherCertificat: true}
-            // )
-
-            // if(!reponseFichiers || reponseFichiers.ok === false) {
-            //     debug("Erreur dans reponse fichiers : %O", reponseFichiers)
-            //     return {ok: false, err: `fuuid inconnu ou err : ${fuuid}`}
-            // }
-
-            // debug("Reponse info fichiers : %O", reponseFichiers)
-
-            // const fichierMetadata = reponseFichiers.fichiers.pop()
-            // debug("Fichier metadata: %O", fichierMetadata)
-
-            // Recuperer la cle, utiliser fuuid fichier pour ref_hachage_bytes
-            //const ref_hachage_bytes = fichierMetadata.fuuid_v_courante
- 
             let domaine = 'GrosFichiers'
             if(roles.includes('messagerie_web')) domaine = 'Messagerie'
 
@@ -79,26 +55,6 @@ async function downloadVideoPrive(req, res, next) {
                 return res.sendStatus(403)
             }
 
-            // Verifier si on prend l'original
-            // let infoVideo = null
-            // if(fichierMetadata.fuuid_v_courante === fuuid) {
-            //     // S'assurer que c'est un video
-            //     infoVideo = fichierMetadata.version_courante
-            // } else {
-            //     infoVideo = Object.values(fichierMetadata.version_courante.video).filter(item=>item.fuuid_video===fuuid).pop()
-            // }
-
-            // debug("Info video %s\n%O", fuuid, infoVideo)
-            // if(!infoVideo) {
-            //     debug("Aucuns videos associes")
-            //     return res.sendStatus(404)
-            // }
-
-            // const mimetype = infoVideo.mimetype
-            // if(!mimetype.startsWith('video/')) {
-            //     debug("Le mimetype n'est pas video")
-            //     return res.sendStatus(403)
-            // }
             const metaCle = cleDechiffrage.metaCle
 
             metaCle.header = header || metaCle.header
