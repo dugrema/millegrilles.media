@@ -5,7 +5,7 @@ const { traiterCommandeTranscodage, progressUpdate } = require('../transformatio
 const { recupererCle } = require('../pki')
 
 const urlServeurIndex = process.env.MG_ELASTICSEARCH_URL || 'http://elasticsearch:9200'
-const activerQueuesProcessing = process.env.DISABLE_Q_PROCESSING?false:true
+// const activerQueuesProcessing = process.env.DISABLE_Q_PROCESSING?false:true
 
 const EXPIRATION_MESSAGE_DEFAUT = 15 * 60 * 1000,  // 15 minutes en millisec
       EXPIRATION_COMMANDE_TRANSCODAGE = 30 * 60 * 1000  // 30 minutes en millisec
@@ -17,9 +17,12 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
 // Variables globales
 var _mq = null,
     _storeConsignation = null  // injecte dans www,
-    _transfertConsignation = null
+    _transfertConsignation = null,
+    activerQueuesProcessing = true
 
-function setMq(mq) {
+function setMq(mq, opts) {
+  opts = opts || {}
+  activerQueuesProcessing = opts.activerQueuesProcessing !== false
   _mq = mq
   _idmg = mq.pki.idmg
   debug("IDMG RabbitMQ %s", this.idmg)

@@ -5,10 +5,11 @@ const { MilleGrillesPKI, MilleGrillesAmqpDAO } = require('@dugrema/millegrilles.
 const EXPIRATION_MESSAGE_DEFAUT = 30 * 60 * 1000  // minutes en millisec
 const EXPIRATION_MESSAGE_VIDEO = 10 * 60 * 1000   // minutes en millisec
 
-const activerQueuesProcessing = process.env.DISABLE_Q_PROCESSING?false:true
+// const activerQueuesProcessing = process.env.DISABLE_Q_PROCESSING?false:true
 
 async function init(opts) {
   opts = opts || {}
+  const activerQueuesProcessing = !!opts.activerQueuesProcessing
 
   // Preparer certificats
   const certPem = fs.readFileSync(process.env.MG_MQ_CERTFILE).toString('utf-8')
@@ -43,13 +44,15 @@ async function init(opts) {
 
       // indexation peut prendre plus de 30 minutes (ACK timeout)
       qCustom.indexation = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation', preAck: true}
+  } else {
+    console.info("INFO: amqpdao Q processing est desactive")
   }
   const amqpdao = new MilleGrillesAmqpDAO(instPki, {qCustom})
   const mqConnectionUrl = process.env.MG_MQ_URL;
   await amqpdao.connect(mqConnectionUrl)
 
   // Attacher les evenements, cles de routage
-  const {media} = await initialiserRabbitMQ(amqpdao)
+  const {media} = await initialiserRabbitMQ(amqpdao, activerQueuesProcessing)
 
   // Middleware, injecte l'instance
   const middleware = (req, res, next) => {
@@ -60,7 +63,7 @@ async function init(opts) {
   return {middleware, amqpdao, messageHandler: media}
 }
 
-async function initialiserRabbitMQ(rabbitMQ) {
+async function initialiserRabbitMQ(rabbitMQ, activerQueuesProcessing) {
   // Creer objets de connexion a MQ - importer librairies requises
   const {PkiMessages} = require('./messages/pki');
   rabbitMQ.enregistrerListenerConnexion(new PkiMessages(rabbitMQ));
@@ -69,7 +72,7 @@ async function initialiserRabbitMQ(rabbitMQ) {
   // rabbitMQ.enregistrerListenerConnexion(new DecrypterFichier(rabbitMQ));
 
   const media = require('./messages/media')
-  media.setMq(rabbitMQ)
+  media.setMq(rabbitMQ, {activerQueuesProcessing})
   rabbitMQ.enregistrerListenerConnexion(media);
 
   // const publication = require('../messages/publication')

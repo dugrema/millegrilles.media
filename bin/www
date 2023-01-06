@@ -21,7 +21,10 @@ const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
       REDIS_PWD_FILE = process.env.MG_MQ_REDIS_PASSWD,
       URL_CONSIGNATION_FICHIERS = process.env.MG_CONSIGNATION_URL,  // || 'https://fichiers:443/fichiers_transfert',
       PATH_STAGING = process.env.PATH_STAGING || '/var/opt/millegrilles/consignation/staging/media',
-      DESACTIVER_ROUTES = !!process.env.DESACTIVER_ROUTES
+      MODE_OPERATION = process.env.MODE_OPERATION || 'all'
+
+const ACTIVER_ROUTES = ['all', 'stream'].includes(MODE_OPERATION.toLowerCase()),
+      ACTIVER_MESSAGES = ['all', 'media'].includes(MODE_OPERATION.toLowerCase())
 
 // Preparer certificats, mots de passe
 function chargerCredendials() {
@@ -60,7 +63,7 @@ async function init() {
   await redisClient.ping()
 
   // Connexion AMQ
-  const {amqpdao: instAmqpdao, messageHandler} = await amqpdao.init({redisClient})
+  const {amqpdao: instAmqpdao, messageHandler} = await amqpdao.init({redisClient, activerQueuesProcessing: ACTIVER_MESSAGES})
   const idmg = instAmqpdao.pki.idmg
 
   debug("Initialisation serveur IDMG : %s", idmg)
@@ -84,10 +87,10 @@ async function init() {
 
   const root = await initialiserApp(instAmqpdao, {middleware})
   let server = null
-  if(!DESACTIVER_ROUTES) {
+  if(ACTIVER_ROUTES) {
     server = initialiserServer(root)
   } else {
-    debug("Desactiver routes / server https")
+    console.info("INFO: Desactiver routes / server https")
   }
 
   // Hook pour un health check regulier (surtout pour connexion MQ)
