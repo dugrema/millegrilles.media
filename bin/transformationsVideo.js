@@ -434,7 +434,11 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     debug("Profil video : %O", profil)
 
     // Transmettre evenement debut de transcodage
-    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height}, `evenement.fichiers.${fuuid}.transcodageDebut`, {exchange: '2.prive'})
+    mq.emettreEvenement(
+      {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, user_id}, 
+      `evenement.fichiers.${fuuid}.transcodageDebut`, 
+      {exchange: '2.prive'}
+    )
 
     // Fonction de progres
     let lastUpdate = null, complet = false
@@ -456,7 +460,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
         }
       }
       lastUpdate = new Date().getTime()  // Reset
-      progressUpdate(mq, {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, etat}, progress) 
+      progressUpdate(mq, {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, etat, user_id}, progress) 
     }
 
     // Transmettre transaction info chiffrage
@@ -539,7 +543,10 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     console.error("transformationsVideo: Erreur transcodage : %O", err)
     if(uuidCorrelationCleanup) storeConsignation.stagingDelete(uuidCorrelationCleanup)
     progressCb({percent: -1}, {etat: 'erreur'})
-    mq.emettreEvenement({fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, err: ''+err}, `evenement.fichiers.${fuuid}.transcodageErreur`)
+    mq.emettreEvenement(
+      {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, user_id, err: ''+err}, 
+      `evenement.fichiers.${fuuid}.transcodageErreur`
+    )
     throw err
   }
 }
@@ -608,11 +615,17 @@ function progressUpdate(mq, paramsVideo, progress) {
   }
 
   if(!isNaN(pctProgres)) {
-    const {mimetype, fuuid} = paramsVideo
+    const {mimetype, fuuid, user_id} = paramsVideo
     // debug("Progres %s vers %s %d%", fuuid, mimetype, pctProgres)
     debug("Progres %d %O", pctProgres, paramsVideo)
 
-    const domaineAction = `evenement.fichiers.${fuuid}.transcodageProgres`
+    let domaineAction = null
+    if(user_id) {
+      domaineAction = `evenement.fichiers.${user_id}.transcodageProgres`
+    } else {
+      domaineAction = `evenement.fichiers.${fuuid}.transcodageProgres`
+    }
+
     const contenuEvenement = {...paramsVideo, pctProgres, passe: progress.passe}
     // mq.emettreEvenement(contenuEvenement, domaineAction)
     mq.emettreEvenement(contenuEvenement, domaineAction, {exchange: '2.prive'})
