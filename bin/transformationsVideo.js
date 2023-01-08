@@ -460,7 +460,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
         }
       }
       lastUpdate = new Date().getTime()  // Reset
-      progressUpdate(mq, {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, etat, user_id}, progress) 
+      progressUpdate(mq, {tuuid, fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, etat, user_id}, progress) 
     }
 
     // Transmettre transaction info chiffrage
