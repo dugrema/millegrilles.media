@@ -446,7 +446,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
       opts = opts || {}
       const etat = opts.etat || 'transcodage'
       // debug("traiterCommandeTranscodage Progress update %s / %s;%s:%s : %O", fuuid, mimetype, height, videoBitrate, progress)
-      if(progress && progress.force === true) {
+      if(opts.force == true || progress && progress.force === true) {
         // Ok
       } else if(lastUpdate) {
         if(complet && progress.frames < progress.framesTotal) {
@@ -515,7 +515,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, clesPubliques, m
     }
 
     await storeConsignation.stagingReady(mq, hachage, transactionAssocierVideo, uuidCorrelation)
-    progressCb({percent: 100}, {etat: 'termine'})
+    progressCb({percent: 100}, {etat: 'termine', force: true})
     
     // const probeInfo = resultatTranscodage.probe
 
@@ -619,16 +619,16 @@ function progressUpdate(mq, paramsVideo, progress) {
     // debug("Progres %s vers %s %d%", fuuid, mimetype, pctProgres)
     debug("Progres %d %O", pctProgres, paramsVideo)
 
-    let domaineAction = null
+    let partition = null
     if(user_id) {
-      domaineAction = `evenement.fichiers.${user_id}.transcodageProgres`
+      partition = user_id
     } else {
-      domaineAction = `evenement.fichiers.${fuuid}.transcodageProgres`
+      partition = fuuid
     }
 
     const contenuEvenement = {...paramsVideo, pctProgres, passe: progress.passe}
     // mq.emettreEvenement(contenuEvenement, domaineAction)
-    mq.emettreEvenement(contenuEvenement, domaineAction, {exchange: '2.prive'})
+    mq.emettreEvenement(contenuEvenement, 'fichiers', {exchange: '2.prive', partition, action: 'transcodageProgres'})
       .catch(err=>debug("Erreur emission transcodage progres (%O) : %O", contenuEvenement, err))
   }
 }
