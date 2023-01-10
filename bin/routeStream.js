@@ -1,22 +1,20 @@
 const debug = require('debug')('media:routeStream')
 const express = require('express');
-const path = require('path');
 const fs = require('fs')
 const fsPromises = require('fs/promises')
 const { verifierTokenFichier } = require('@dugrema/millegrilles.nodejs/src/jwt')
 
 const { recupererCle } = require('./pki')
 
-const STAGING_FILE_TIMEOUT_MSEC = 300000
-
 function route(mq, opts) {
     const router = express.Router();
 
     // Autorisation
-    router.get('/*/streams/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse)
-    router.get('/*/streams/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
-    router.get('/stream_transfert/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse)
-    router.get('/stream_transfert/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
+    //router.get('/*/streams/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse)
+    //router.get('/*/streams/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
+    router.get('/stream_transfert/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse, cleanup)
+    router.head('/stream_transfert/:fuuid', verifierJwt, downloadVideoPrive, (_req,res)=>res.sendStatus(200))
+    //router.get('/stream_transfert/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
 
     return router
 }
@@ -85,6 +83,8 @@ async function downloadVideoPrive(req, res, next) {
         }
 
         debug("Fichier a streamer : %O", cacheEntry)
+        res.cacheEntry = cacheEntry
+
         const pathFichierDechiffre = cacheEntry.decryptedPath,
               metadata = cacheEntry.metadata,
               mimetype = cacheEntry.mimetype
@@ -133,7 +133,7 @@ async function downloadVideoPrive(req, res, next) {
 }
 
 // Sert a preparer un fichier temporaire local pour determiner la taille, supporter slicing
-function pipeReponse(req, res) {
+function pipeReponse(req, res, next) {
     // const header = res.responseHeader
     const { range, filePath, fileRedirect, stat } = res
   
@@ -156,13 +156,13 @@ function pipeReponse(req, res) {
       debug("Transmission range fichier %d a %d bytes (taille :%d) : %s", start, end, stat.size, filePath)
       const readStream = fs.createReadStream(filePath, { start: start, end: end })
 
-      let totalBytes = 0
-      readStream.on('data', chunk=>{
-        totalBytes += chunk.length
-      })
-      readStream.on('end', ()=>{
-        debug("!!! TOTAL BYTES : %d", totalBytes)
-      })
+    //   let totalBytes = 0
+    //   readStream.on('data', chunk=>{
+    //     totalBytes += chunk.length
+    //   })
+    //   readStream.on('end', ()=>{
+    //     debug("!!! TOTAL BYTES : %d", totalBytes)
+    //   })
 
       res.status(206)
       readStream.pipe(res)
@@ -174,8 +174,18 @@ function pipeReponse(req, res) {
       const readStream = fs.createReadStream(filePath)
       res.writeHead(200)
       readStream.pipe(res)
+      res.on('close', ()=>next())
     }
   
+}
+
+function cleanup(req, res, next) {
+    const cacheEntry = res.cacheEntry,
+          status = res.statusCode
+    // if(status === 200 && cacheEntry && cacheEntry.clean) {
+    //     debug("Cleanup entree mediaDechiffree pour ", cacheEntry)
+    //     cacheEntry.clean()
+    // }
 }
   
 function readRangeHeader(range, totalLength) {

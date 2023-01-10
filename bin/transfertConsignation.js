@@ -18,8 +18,8 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
       UPLOAD_TAILLE_BLOCK = 5 * 1024 * 1024  // 5 MB,
       PATH_MEDIA_STAGING = '/var/opt/millegrilles/consignation/staging/media',
       PATH_MEDIA_DECHIFFRE_STAGING = '/var/opt/millegrilles/consignation/staging/mediaDechiffre',
-      EXPIRATION_DECHIFFRE = 30 * 60000,
-      INTERVALLE_ENTRETIEN = 5 * 60000
+      EXPIRATION_DECHIFFRE = 30 * 60_000,
+      INTERVALLE_ENTRETIEN = 5 * 60_000
 
 const downloadCache = {}
 
