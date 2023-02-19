@@ -14,6 +14,7 @@ const transfertConsignation = require('./transfertConsignation')
 const {initialiser: initialiserServer} = require('./server')
 const {initialiser: initialiserApp} = require('./app');
 const amqpdao = require('./amqpdao')
+const MediaDownloadManager = require('./downloadManager')
 
 const CERT_CA_FILE = process.env.MG_MQ_CAFILE,
       CERT_FILE = process.env.MG_MQ_CERTFILE,
@@ -69,9 +70,14 @@ async function init() {
   debug("Initialisation serveur IDMG : %s", idmg)
 
   backingStore.configurerThreadPutFichiersConsignation(instAmqpdao, {url: URL_CONSIGNATION_FICHIERS, PATH_STAGING})
+
+  // Download manager
+  const downloadManager = new MediaDownloadManager(instAmqpdao, PATH_STAGING, backingStore)
+  await downloadManager.init()
+
   // Injecter dans media
   transfertConsignation.init(instAmqpdao, backingStore)
-  messageHandler.setStoreConsignation(instAmqpdao, backingStore, transfertConsignation)
+  messageHandler.setStoreConsignation(instAmqpdao, backingStore, transfertConsignation, downloadManager)
 
   const middleware = [
     logger('dev'),
@@ -81,6 +87,7 @@ async function init() {
       req.idmg = idmg
       req.storeConsignation = backingStore
       req.transfertConsignation = transfertConsignation
+      req.downloadManager = downloadManager
       next()
     }
   ]

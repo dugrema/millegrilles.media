@@ -18,6 +18,7 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
 var _mq = null,
     _storeConsignation = null  // injecte dans www,
     _transfertConsignation = null,
+    _downloadManager = null,
     activerQueuesProcessing = true
 
 function setMq(mq, opts) {
@@ -28,13 +29,14 @@ function setMq(mq, opts) {
   debug("IDMG RabbitMQ %s", this.idmg)
 }
 
-function setStoreConsignation(mq, storeConsignation, transfertConsignation) {
+function setStoreConsignation(mq, storeConsignation, transfertConsignation, downloadManager) {
   // Config upload consignation
   debug("Set store consignation : %O", storeConsignation)
   _storeConsignation = storeConsignation
   if(!_mq) setMq(mq)
   //transfertConsignation.init(urlConsignationFichiers, mq, storeConsignation)
   _transfertConsignation = transfertConsignation
+  _downloadManager = downloadManager
 }
 
 // Appele lors d'une reconnexion MQ

@@ -7,19 +7,94 @@ const { verifierTokenFichier } = require('@dugrema/millegrilles.nodejs/src/jwt')
 const { recupererCle } = require('./pki')
 
 function route(mq, opts) {
-    const router = express.Router();
+    const router = express.Router()
+
+    const routerTransfert = express.Router()
+    router.use('/stream_transfert', routerTransfert)
 
     // Autorisation
-    //router.get('/*/streams/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse)
-    //router.get('/*/streams/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
-    router.get('/stream_transfert/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse, cleanup)
-    router.head('/stream_transfert/:fuuid', verifierJwt, downloadVideoPrive, (_req,res)=>res.sendStatus(200))
-    //router.get('/stream_transfert/:fuuid/*', verifierJwt, downloadVideoPrive, pipeReponse)  // Supporter nom fichier (e.g. /video.mov)
+    routerTransfert.get('/:fuuid', verifierJwt, downloadVideoPrive, pipeReponse, cleanup)
+    routerTransfert.head('/:fuuid', verifierJwt, downloadVideoPrive, (_req,res)=>res.sendStatus(200))
 
     return router
 }
 
 async function downloadVideoPrive(req, res, next) {
+    const mq = req.amqpdao,
+          downloadManager = req.downloadManager
+
+    const fuuid = res.fuuid,
+          userId = res.userId,
+          cleRefFuuid = res.cleRefFuuid,
+          format = res.format,
+          header = res.header,
+          iv = res.iv,
+          tag = res.tag,
+          roles = res.roles || [],
+          mimetype = res.mimetype
+
+    let staging = downloadManager.getFichierCache(fuuid)
+    if(staging === false) {
+        debug("downloadVideoPrive Fichier absent du cache, downloader ", fuuid)
+
+        // Recuperer la cle de dechiffrage
+        let domaine = 'GrosFichiers'
+        if(roles.includes('messagerie_web')) domaine = 'Messagerie'
+    
+        debug("Demande cle dechiffrage a %s (stream: true)", domaine)
+        const cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
+        debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
+    
+        if(!cleDechiffrage || !cleDechiffrage.metaCle) {
+            debug("Acces cle refuse : ", cleDechiffrage)
+            return res.sendStatus(403)
+        }
+
+        // Injecter params de dechiffrage custom si video est transcode (pas original)
+        const metaCle = cleDechiffrage.metaCle
+        metaCle.header = header || metaCle.header
+        metaCle.iv = iv || metaCle.iv
+        metaCle.tag = tag || metaCle.tag
+        metaCle.format = format || metaCle.format
+
+        // Downloader fichier
+        try {
+            staging = await downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype})
+        } catch(err) {
+            console.error(new Date() + " routeStream.downloadVideoPrive Erreur download %s vers cache : %O", fuuid, err)
+            return res.sendStatus(500)
+        }
+    }
+
+    res.staging = staging   // Conserver pour cleanup
+
+    const statFichier = await fsPromises.stat(staging.path)
+    res.statFichier = statFichier
+
+    const contentLength = statFichier.size
+    // Calculer taille video pour mgs4
+    const overheadLength = Math.ceil((contentLength / ((64 * 1024)+17))) * 17
+    const decryptedContentLength = contentLength - overheadLength
+    res.contentLength = decryptedContentLength
+
+    try {
+        debug("downloadVideoPrive Pipe stream dechiffrage pour ", fuuid)
+        res.setHeader('Content-Type', mimetype)
+        res.setHeader('Content-Length', decryptedContentLength)
+        res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
+        res.setHeader('Accept-Ranges', 'bytes')
+        res.status(200)
+
+        // Next pipe la reponse dechiffree sur GET
+        next()
+    } catch(err) {
+        console.error(new Date() + " routeStream.downloadVideoPrive Erreur stream %s : %O", fuuid, err)
+        return res.sendStatus(500)
+    }
+
+}
+
+async function downloadVideoPriveOld(req, res, next) {
     debug("downloadVideoPrive methode:" + req.method + ": " + req.url);
     debug("Headers : %O\nAutorisation: %o", req.headers, req.autorisationMillegrille);
 
@@ -133,53 +208,50 @@ async function downloadVideoPrive(req, res, next) {
 }
 
 // Sert a preparer un fichier temporaire local pour determiner la taille, supporter slicing
-function pipeReponse(req, res, next) {
-    // const header = res.responseHeader
-    const { range, filePath, fileRedirect, stat } = res
+async function pipeReponse(req, res, next) {
+    const downloadManager = req.downloadManager
+    const { range, fuuid, staging, contentLength } = res
   
-    if(range) {
-      var start = range.Start,
-          end = range.End
-  
-      // If the range can't be fulfilled.
-      if (start >= stat.size) { // || end >= stat.size) {
-        // Indicate the acceptable range.
-        res.setHeader('Content-Range', 'bytes */' + stat.size)  // File size.
-  
-        // Return the 416 'Requested Range Not Satisfiable'.
-        res.writeHead(416)
-        return res.end()
-      }
-  
-      res.setHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + stat.size)
-  
-      debug("Transmission range fichier %d a %d bytes (taille :%d) : %s", start, end, stat.size, filePath)
-      const readStream = fs.createReadStream(filePath, { start: start, end: end })
+    if(staging) {
+        if(range) {
+            var start = range.Start,
+                end = range.End
+        
+            // If the range can't be fulfilled.
+            if (start >= contentLength) { // || end >= stat.size) {
+                // Indicate the acceptable range.
+                res.setHeader('Content-Range', 'bytes */' + contentLength)  // File size.
+        
+                // Return the 416 'Requested Range Not Satisfiable'.
+                res.writeHead(416)
+                return res.end()
+            }
+        
+            res.setHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + contentLength)
+        
+            debug("Transmission range fichier %d a %d bytes (taille :%d) : %s", start, end, contentLength, filePath)
+            // const readStream = fs.createReadStream(filePath, { start: start, end: end })
+        
+            // HACK : on ne supporte pas seek durant dechiffrage. On se fie au cache NGINX.
+            if(start > 0) return res.sendStatus(416)
 
-    //   let totalBytes = 0
-    //   readStream.on('data', chunk=>{
-    //     totalBytes += chunk.length
-    //   })
-    //   readStream.on('end', ()=>{
-    //     debug("!!! TOTAL BYTES : %d", totalBytes)
-    //   })
-
-      res.status(206)
-      readStream.pipe(res)
-    } else if(fileRedirect) {
-      // Redirection
-      res.status(307).send(fileRedirect)
-    } else if(filePath) {
-      // Transmission directe du fichier
-      const readStream = fs.createReadStream(filePath)
-      res.writeHead(200)
-      readStream.pipe(res)
-      res.on('close', ()=>next())
+            res.status(206)
+            await downloadManager.pipeDecipher(fuuid, res)
+        } else {
+            // Transmission directe du fichier
+            res.on('close', ()=>next())
+            res.writeHead(200)
+            await downloadManager.pipeDecipher(fuuid, res)
+        }
+    } else {
+        console.error("pipeReponse fichier n'est pas en cache ", fuuid)
+        res.sendStatus(500)
     }
-  
+
 }
 
 function cleanup(req, res, next) {
+    debug("Cleanup ", res.fuuid)
     const cacheEntry = res.cacheEntry,
           status = res.statusCode
     // if(status === 200 && cacheEntry && cacheEntry.clean) {
