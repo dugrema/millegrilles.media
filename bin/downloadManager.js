@@ -73,6 +73,20 @@ MediaDownloadManager.prototype.getFichierCache = function(fuuid) {
     return false
 }
 
+MediaDownloadManager.prototype.attendreDownload = async function(fuuid, opts) {
+    const timeoutDuration = opts.timeout || 15_000
+    const staging = this.fuuidsStaging[fuuid]
+    if(staging) {
+        if(staging.promiseReady) {
+            const timeoutPromise = new Promise(resolve => setTimeout(()=>resolve({timeout: true}), timeoutDuration))
+            const result = await Promise.race([timeoutPromise, staging.promiseReady])
+            if(result.timeout === true) return {timeout: true, ...staging}
+        }
+        return staging
+    }
+    return false
+}
+
 MediaDownloadManager.prototype.setFichierDownloadOk = function(fuuid) {
     const staging = this.fuuidsStaging[fuuid]
     if(staging && staging.path && staging.cle) {
@@ -89,7 +103,6 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
 
     let staging = this.fuuidsStaging[fuuid]
 
-    let nouveau = false
     if(!staging) {
         // Creer staging
 
@@ -101,7 +114,8 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
 
             path: null,
 
-            callbacksPending: [],
+            // callbacksPending: [],
+            promiseReady: null,  // Present si path/err ne sont pas present
             dateCreation: new Date(),
             dernierAcces: null,
 
@@ -112,7 +126,11 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
         }
         this.fuuidsStaging[fuuid] = staging
 
-        nouveau = true
+        staging.promiseReady = new Promise((resolve, reject)=>{
+            staging.promiseResolve = resolve
+            staging.promiseReject = reject
+        })
+
     } else if(staging.path && !staging.cle) {
         // Le fichier existe deja localement - il manquait la cle
         staging.cle = cle
@@ -121,21 +139,8 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
         return staging
     }
     
-    // Ajouter callback pour attendre la fin du download
-    let promiseDownload = null
-    if(!staging.path) {
-        // Ajouter callback au staging existant
-        promiseDownload = new Promise( (resolve, reject) => {
-            const cb = async result => {
-                if(result.err) return reject(result.err)
-                resolve(result)
-            }
-            staging.callbacksPending.push(cb)
-        })
-    }
-
-    // Le callback est pret, ajouter fuuid a la Q de traitement si nouveau
-    if(nouveau) {
+    // Ajouter fuuid a la Q de traitement si nouveau
+    if(staging.promiseReady !== undefined) {
         debug('ajouterFuuid %s, Q: %O', fuuid, this.queueFuuids)
         this.queueFuuids.push(fuuid)
     }
@@ -146,7 +151,7 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
             .catch(err=>console.error("Erreur run threadTransfert: %O", err))
     }
 
-    if(promiseDownload) await promiseDownload
+    if(staging.promiseReady) await staging.promiseReady
     debug("Fichier download complete : ", fuuid)
 
     // Lancer l'erreur si presente
@@ -185,24 +190,21 @@ MediaDownloadManager.prototype.threadTransfert = async function() {
         debug("threadTransfert Queue avec %d items", this.queueFuuids.length)
         while(this.queueFuuids.length > 0) {
             const fuuid = this.queueFuuids.shift()  // FIFO
-            const stagingInfo = this.fuuidsStaging[fuuid],
-                  callbacks = stagingInfo.callbacksPending
+            const stagingInfo = this.fuuidsStaging[fuuid]
             try {
                 debug("threadTransfert Traiter GET pour item %s", fuuid)
                 stagingInfo.actif = true
                 const pathFichier = await this.getFichier(fuuid)
                 stagingInfo.path = pathFichier
-                for await (let cb of callbacks) {
-                    await cb(stagingInfo)
-                }
+                stagingInfo.promiseResolve(stagingInfo)
             } catch(err) {
                 stagingInfo.err = err
-                for await (let cb of callbacks) {
-                    await cb({err})
-                }
+                stagingInfo.promiseReject(err)
             } finally {
                 stagingInfo.actif = false
-                stagingInfo.callbacksPending = undefined
+                stagingInfo.promiseReady = undefined
+                stagingInfo.promiseResolve = undefined
+                stagingInfo.promiseReject = undefined
                 stagingInfo.dernierAcces = new Date()
             }
         }
@@ -288,6 +290,9 @@ MediaDownloadManager.prototype.entretien = async function() {
                 debug("entretien Supprimer fichier %s", staging.path)
                 fsPromises.unlink(staging.path).catch(err=>console.error("Erreur cleanup %s : %O", staging.path, err))
             }
+            if(staging.promiseReject) {
+                staging.promiseReject(new Error('cleanup'))
+            }
             delete this.fuuidsStaging[fuuid]
         }
     }
@@ -324,6 +329,16 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
             timeout: 5000,
         })
         debug("getFichier reponse %O\nCache vers %O", reponse.headers, pathFichierWork)
+        
+        const size = reponse.headers['content-length']
+        staging.size = size
+        staging.position = 0
+
+        reponse.data.on('data', chunk => {
+            staging.position += chunk.length
+            debug("Position %d, length %d", staging.position, staging.size)
+        })
+
         const streamWriter = fs.createWriteStream(pathFichierWork)
         await new Promise((resolve, reject)=>{
             streamWriter.on('close', resolve)
@@ -371,7 +386,7 @@ MediaDownloadManager.prototype.parseExistants = async function(directory, dechif
                 dechiffrer: dechiffrer || false,
                 path: fullPath,
 
-                callbacksPending: null,
+                // callbacksPending: null,
                 dateCreation: new Date(),
                 dernierAcces: new Date(),
 

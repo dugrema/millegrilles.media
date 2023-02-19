@@ -6,6 +6,8 @@ const { verifierTokenFichier } = require('@dugrema/millegrilles.nodejs/src/jwt')
 
 const { recupererCle } = require('./pki')
 
+const TIMEOUT_HEAD = 500 // 3_000
+
 function route(mq, opts) {
     const router = express.Router()
 
@@ -33,8 +35,8 @@ async function downloadVideoPrive(req, res, next) {
           roles = res.roles || [],
           mimetype = res.mimetype
 
-    let staging = downloadManager.getFichierCache(fuuid)
-    if(staging === false) {
+    let download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})
+    if(download === false || !download.cle) {
         debug("downloadVideoPrive Fichier absent du cache, downloader ", fuuid)
 
         // Recuperer la cle de dechiffrage
@@ -59,11 +61,22 @@ async function downloadVideoPrive(req, res, next) {
 
         // Downloader fichier
         try {
-            staging = await downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype, dechiffrer: true})
+            downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype, dechiffrer: true})
+            download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})    
         } catch(err) {
             console.error(new Date() + " routeStream.downloadVideoPrive Erreur download %s vers cache : %O", fuuid, err)
             return res.sendStatus(500)
         }
+    }
+
+    const staging = download
+
+    if(staging.timeout === true || !staging.path) {
+        // Retourner info de progres
+        res.setHeader('Content-Type', mimetype)
+        res.setHeader('X-File-Size', staging.size)
+        res.setHeader('X-File-Position', staging.position)
+        return res.sendStatus(202)
     }
 
     res.staging = staging   // Conserver pour cleanup
