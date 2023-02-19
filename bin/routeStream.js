@@ -6,7 +6,7 @@ const { verifierTokenFichier } = require('@dugrema/millegrilles.nodejs/src/jwt')
 
 const { recupererCle } = require('./pki')
 
-const TIMEOUT_HEAD = 500 // 3_000
+const TIMEOUT_HEAD = 3_000
 
 function route(mq, opts) {
     const router = express.Router()
