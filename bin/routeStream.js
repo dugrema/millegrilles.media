@@ -251,13 +251,11 @@ async function pipeReponse(req, res, next) {
 }
 
 function cleanup(req, res, next) {
-    debug("Cleanup ", res.fuuid)
-    const cacheEntry = res.cacheEntry,
-          status = res.statusCode
-    // if(status === 200 && cacheEntry && cacheEntry.clean) {
-    //     debug("Cleanup entree mediaDechiffree pour ", cacheEntry)
-    //     cacheEntry.clean()
-    // }
+    const downloadManager = req.downloadManager
+    const { range, fuuid, staging, contentLength } = res
+
+    debug("Cleanup ", fuuid)
+    downloadManager.setFichierDownloadOk(fuuid)
 }
   
 function readRangeHeader(range, totalLength) {

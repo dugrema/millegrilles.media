@@ -4,11 +4,15 @@ const fsPromises = require('fs/promises')
 const path = require('path')
 const axios = require('axios')
 const https = require('https')
+const readdirp = require('readdirp')
 
 const { decipherTransform } = require('./cryptoUtils')
 
-const INTERVALLE_RUN_TRANSFERT = 900_000,
-      CONST_TAILLE_SPLIT_MAX_DEFAULT = 5 * 1024 * 1024
+const INTERVALLE_RUN_TRANSFERT = 120_000
+
+const EXPIRATION_COMPLETE = 5 * 60_000,
+      EXPIRATION_INCOMPLET = 30 * 60_000,
+      EXPIRATION_WORK = EXPIRATION_COMPLETE
 
 /** 
  * Manager de download de fichiers de media.
@@ -45,12 +49,16 @@ MediaDownloadManager.prototype.init = async function() {
     debug("Demarrage download manager, path staging ", this.pathStaging)
 
     const pathWork = path.join(this.pathStaging, 'work'),
-          pathCache = path.join(this.pathStaging, 'cache')
+          pathChiffre = path.join(this.pathStaging, 'chiffre'),
+          pathDechiffre = path.join(this.pathStaging, 'dechiffre')
 
     await Promise.all([
         fsPromises.mkdir(pathWork, {recursive: true}), 
-        fsPromises.mkdir(pathCache, {recursive: true}),
+        fsPromises.mkdir(pathChiffre, {recursive: true}),
+        fsPromises.mkdir(pathDechiffre, {recursive: true}),
     ])
+
+    await this.parseCache()
 
     this.threadTransfert()
       .catch(err=>console.error("Erreur demarrage thread ", err))
@@ -59,8 +67,16 @@ MediaDownloadManager.prototype.init = async function() {
 /** Retourne l'information de staging d'un fichier present dans le cache */
 MediaDownloadManager.prototype.getFichierCache = function(fuuid) {
     const staging = this.fuuidsStaging[fuuid]
-    if(staging && staging.path) return staging
+    if(staging && staging.path && staging.cle) return staging
     return false
+}
+
+MediaDownloadManager.prototype.setFichierDownloadOk = function(fuuid) {
+    const staging = this.fuuidsStaging[fuuid]
+    if(staging && staging.path && staging.cle) {
+        staging.uploade = true
+        staging.dernierAcces = new Date()
+    }
 }
 
 MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts) {
@@ -94,7 +110,13 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
         this.fuuidsStaging[fuuid] = staging
 
         nouveau = true
-    } 
+    } else if(staging.path && !staging.cle) {
+        // Le fichier existe deja localement - il manquait la cle
+        staging.cle = cle
+        staging.mimetype = mimetype
+        staging.dernierAcces = new Date()
+        return staging
+    }
     
     // Ajouter callback pour attendre la fin du download
     let promiseDownload = null
@@ -142,6 +164,9 @@ MediaDownloadManager.prototype.pipeDecipher = async function(fuuid, outStream) {
           cle = staging.cle
 
     const readStream = fs.createReadStream(pathFichier)
+    readStream.on('data', ()=>{
+        staging.dernierAcces = new Date()  // Permet de s'assurer que le fichier ne sera pas supprime
+    })
     await dechiffrerStream(readStream, cle, outStream)
 }
 
@@ -159,6 +184,7 @@ MediaDownloadManager.prototype.threadTransfert = async function() {
                   callbacks = stagingInfo.callbacksPending
             try {
                 debug("threadTransfert Traiter GET pour item %s", fuuid)
+                stagingInfo.downloadEnCours = true
                 const pathFichier = await this.getFichier(fuuid)
                 stagingInfo.path = pathFichier
                 for await (let cb of callbacks) {
@@ -170,6 +196,7 @@ MediaDownloadManager.prototype.threadTransfert = async function() {
                     await cb({err})
                 }
             } finally {
+                stagingInfo.downloadEnCours = false
                 stagingInfo.callbacksPending = undefined
                 stagingInfo.dernierAcces = new Date()
             }
@@ -192,15 +219,107 @@ MediaDownloadManager.prototype.threadTransfert = async function() {
     }
 }
 
+/** Parse les fichiers deja present dans le cache chiffre/dechiffre */
+MediaDownloadManager.prototype.parseCache = async function() {
+    const pathChiffre = path.join(this.pathStaging, 'chiffre'),
+          pathDechiffre = path.join(this.pathStaging, 'dechiffre')
+
+    for await (const entry of readdirp(pathChiffre, {type: 'files'})) {
+        const { basename, fullPath, stats } = entry
+        debug("Entry fichier cache : %s", fullPath)
+        const fichierParse = path.parse(basename)
+        const fuuid = fichierParse.name
+
+        let staging = this.fuuidsStaging[fuuid]
+        if(!staging) {
+            staging = {
+                fuuid,
+                cle: null,
+                mimetype: null,
+                dechiffrer: false,
+                path: fullPath,
+
+                callbacksPending: null,
+                dateCreation: new Date(),
+                dernierAcces: new Date(),
+
+                uploade: false,      // Indique qu'au moins 1 upload du cache a ete complete avec succes
+                supprimer: false,    // Indique qu'on peut supprimer le cache
+            }
+            this.fuuidsStaging[fuuid] = staging
+            debug("Recover fichier staging ", staging)
+        }        
+    }
+}
+
+/** Parse les fichiers deja present dans le cache chiffre/dechiffre */
+MediaDownloadManager.prototype.cleanupWork = async function() {
+    const pathWork = path.join(this.pathStaging, 'work')
+
+    const dateExpiration = new Date() - EXPIRATION_WORK
+
+    for await (const entry of readdirp(pathWork, {type: 'files', alwaysStat: true})) {
+        const { fullPath, stats } = entry
+        debug("Entry fichier work : %s", fullPath)
+        const { mtimeMs } = stats
+        if(mtimeMs < dateExpiration) {
+            fsPromises.unlink(fullPath).catch(err=>console.error("Erreur cleanup work fichier %s : %O", fullPath, err))
+        }
+    }
+}
+
 MediaDownloadManager.prototype.entretien = async function() {
     debug('entretien')
+
+    // Identifier fichier qui peuvent etre reclames
+    const now = new Date().getTime()
+    const expireComplete = now - EXPIRATION_COMPLETE,
+          expireIncomplet = now - EXPIRATION_INCOMPLET
+
+    for (let fuuid of Object.keys(this.fuuidsStaging)) {
+        const staging = this.fuuidsStaging[fuuid]
+        debug("entretien Verifier ", staging)
+        if(staging.uploade === true) {
+            if(staging.dernierAcces.getTime() < expireComplete) {
+                debug("Cleanup fichier complet ", fuuid)
+                staging.supprimer = true
+            }
+        } else if(staging.err) {
+            if(staging.dernierAcces.getTime() < expireIncomplet) {
+                debug("Cleanup fichier incomplet ", fuuid)
+                staging.supprimer = true
+            }
+        } else if(staging.downloadEnCours === true) {
+            // Ok
+        } else if( ! this.queueFuuids.includes(fuuid)) {
+            if(!staging.dernierAcces || staging.dernierAcces.getTime() < expireIncomplet) {
+                debug("Cleanup fichier status incomplet/restaured ", fuuid)
+                staging.supprimer = true
+            }
+        }
+    }
+
+    // Cleanup des fichiers a supprimer
+    for (let fuuid of Object.keys(this.fuuidsStaging)) {
+        const staging = this.fuuidsStaging[fuuid]
+        if(staging.supprimer === true) {
+            if(staging.path) {
+                debug("entretien Supprimer fichier %s", staging.path)
+                fsPromises.unlink(staging.path).catch(err=>console.error("Erreur cleanup %s : %O", staging.path, err))
+            }
+            delete this.fuuidsStaging[fuuid]
+        }
+    }
+
+    // Cleanup des fichiers work
+    await this.cleanupWork()
 }
 
 MediaDownloadManager.prototype.getFichier = async function(fuuid) {
     debug("getFichier %s", fuuid)
-    const pathFichier = path.join(this.pathStaging, 'cache', fuuid)
-
     const staging = this.fuuidsStaging[fuuid]
+    const dechiffrer = staging.dechiffrer
+    const pathFichier = dechiffrer?path.join(this.pathStaging, 'dechiffre', fuuid):path.join(this.pathStaging, 'chiffre', fuuid)
 
     let pathFichierWork = path.join(this.pathStaging, 'work', fuuid)
     if(staging.dechiffrer === true && staging.mimetype) {
@@ -287,77 +406,5 @@ async function dechiffrerStream(stream, cleFichier, writeStream, opts) {
   
     return promiseTraitement
 }
-
-// MediaDownloadManager.prototype.stagingFichier = async function(fuuid, stream) {
-//     // Staging de fichier public
-  
-//     // Verifier si le fichier existe deja
-//     const pathFuuidLocal = pathConsignation.trouverPathLocal(fuuidEffectif, true)
-//     const pathFuuidEffectif = path.join(pathConsignation.consignationPathDownloadStaging, fuuidEffectif)
-//     var statFichier = await new Promise((resolve, reject) => {
-//       // S'assurer que le path de staging existe
-//       fs.mkdir(pathConsignation.consignationPathDownloadStaging, {recursive: true}, err=>{
-//         if(err) return reject(err)
-//         // Verifier si le fichier existe
-//         fs.stat(pathFuuidEffectif, (err, stat)=>{
-//           if(err) {
-//             if(err.errno == -2) {
-//               resolve(null)  // Le fichier n'existe pas, on va le creer
-//             } else {
-//               reject(err)
-//             }
-//           } else {
-//             // Touch et retourner stat
-//             const time = new Date()
-//             fs.utimes(pathFuuidEffectif, time, time, err=>{
-//               if(err) {
-//                 debug("Erreur touch %s : %o", pathFuuidEffectif, err)
-//                 return
-//               }
-//               resolve({pathFuuidLocal, filePath: pathFuuidEffectif, stat})
-//             })
-//           }
-//         })
-//       })
-//     })
-  
-//     // Verifier si le fichier existe deja - on n'a rien a faire
-//     if(statFichier) return statFichier
-  
-//     // Le fichier n'existe pas, on le dechiffre dans staging
-//     const outStream = fs.createWriteStream(pathFuuidEffectif, {flags: 'wx'})
-//     return new Promise((resolve, reject)=>{
-//       outStream.on('close', _=>{
-//         fs.stat(pathFuuidEffectif, (err, stat)=>{
-//           if(err) {
-//             reject(err)
-//           } else {
-//             debug("Fin staging fichier %O", stat)
-//             resolve({pathFuuidLocal, filePath: pathFuuidEffectif, stat})
-//           }
-//         })
-  
-//       })
-//       outStream.on('error', err=>{
-//         debug("publicStaging.stagingFichier Erreur staging fichier %s : %O", pathFuuidEffectif, err)
-//         reject(err)
-//       })
-  
-//       infoStream.decipherStream.writer.on('error', err=>{
-//         debug("Erreur lecture fichier chiffre : %O", err)
-//         reject(err)
-//       })
-  
-//       debug("Staging fichier %s", pathFuuidEffectif)
-//       infoStream.decipherStream.writer.pipe(outStream)
-//       var readStream = fs.createReadStream(pathFuuidLocal);
-//       readStream.pipe(infoStream.decipherStream.reader)
-//       readStream.on('error', err=>{
-//         console.error("publicStaging.stagingFichier Erreur traitement ficheir %s : %O", pathFuuidEffectif, err)
-//         reject(err)
-//       })
-//     })
-  
-// }
 
 module.exports = MediaDownloadManager
