@@ -336,7 +336,15 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
             }
         })
 
-        await fsPromises.rename(pathFichierWork, pathFichier)
+        try {
+            await fsPromises.rename(pathFichierWork, pathFichier)
+        } catch(err) {
+            if(err.code == 'EEXIST') {
+                // Ok, fichier existe deja
+            } else {
+                throw err
+            }
+        }
 
         return pathFichier
     } catch(err) {

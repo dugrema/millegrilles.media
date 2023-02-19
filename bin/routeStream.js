@@ -59,7 +59,7 @@ async function downloadVideoPrive(req, res, next) {
 
         // Downloader fichier
         try {
-            staging = await downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype})
+            staging = await downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype, dechiffrer: true})
         } catch(err) {
             console.error(new Date() + " routeStream.downloadVideoPrive Erreur download %s vers cache : %O", fuuid, err)
             return res.sendStatus(500)
@@ -73,16 +73,30 @@ async function downloadVideoPrive(req, res, next) {
 
     const contentLength = statFichier.size
     // Calculer taille video pour mgs4
-    const overheadLength = Math.ceil((contentLength / ((64 * 1024)+17))) * 17
-    const decryptedContentLength = contentLength - overheadLength
-    res.contentLength = decryptedContentLength
+    // const overheadLength = Math.ceil((contentLength / ((64 * 1024)+17))) * 17
+    // const decryptedContentLength = contentLength - overheadLength
+    res.contentLength = contentLength
 
     try {
         debug("downloadVideoPrive Pipe stream dechiffrage pour ", fuuid)
+
+        const range = req.headers.range
+        if(range) {
+            debug("Range request : %s, taille fichier %s", range, res.stat.size)
+            const infoRange = readRangeHeader(range, res.stat.size)
+            debug("Range retourne : %O", infoRange)
+            res.range = infoRange
+
+            res.setHeader('Content-Length', infoRange.End - infoRange.Start + 1)
+        } else {
+            res.setHeader('Content-Length', contentLength)
+        }
+
         res.setHeader('Content-Type', mimetype)
-        res.setHeader('Content-Length', decryptedContentLength)
+        // res.setHeader('Content-Length', contentLength)
         res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
         res.setHeader('Accept-Ranges', 'bytes')
+
         res.status(200)
 
         // Next pipe la reponse dechiffree sur GET
@@ -209,7 +223,7 @@ async function downloadVideoPrive(req, res, next) {
 
 // Sert a preparer un fichier temporaire local pour determiner la taille, supporter slicing
 async function pipeReponse(req, res, next) {
-    const downloadManager = req.downloadManager
+    // const downloadManager = req.downloadManager
     const { range, fuuid, staging, contentLength } = res
   
     if(staging) {
@@ -230,18 +244,22 @@ async function pipeReponse(req, res, next) {
             res.setHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + contentLength)
         
             debug("Transmission range fichier %d a %d bytes (taille :%d) : %s", start, end, contentLength, filePath)
-            // const readStream = fs.createReadStream(filePath, { start: start, end: end })
+            const readStream = fs.createReadStream(staging.path, { start: start, end: end })
         
             // HACK : on ne supporte pas seek durant dechiffrage. On se fie au cache NGINX.
-            if(start > 0) return res.sendStatus(416)
+            // if(start > 0) return res.sendStatus(416)
 
-            res.status(206)
-            await downloadManager.pipeDecipher(fuuid, res)
+            res.on('close', ()=>next())
+            res.writeHead(206)
+            readStream.pipe(res)
+            // await downloadManager.pipeDecipher(fuuid, res)
         } else {
             // Transmission directe du fichier
+            const readStream = fs.createReadStream(staging.path)
             res.on('close', ()=>next())
             res.writeHead(200)
-            await downloadManager.pipeDecipher(fuuid, res)
+            readStream.pipe(res)
+            // await downloadManager.pipeDecipher(fuuid, res)
         }
     } else {
         console.error("pipeReponse fichier n'est pas en cache ", fuuid)
