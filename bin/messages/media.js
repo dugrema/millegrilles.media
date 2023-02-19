@@ -129,6 +129,7 @@ async function genererPreviewImage(message) {
     }
   }
 
+  // Downloader fichier, preparer cle
   let cleFichier = null
   let stagingFichier = _downloadManager.getFichierCache(hachageFichier)
   if(!stagingFichier) {
@@ -361,17 +362,35 @@ async function genererPreviewVideo(message) {
     console.error("ERROR media.genererPreviewVideo Aucune information de fichier dans le message : %O", message)
     return
   }
-  const cleFichier = await recupererCle(_mq, hachageFichier)
-  const {cleSymmetrique, informationCle, clesPubliques} = cleFichier
 
-  // Downloader et dechiffrer le fichier
-  try {
-    var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
-      hachageFichier, mimetype, cleFichier, {extension})
-  } catch(err) {
-    debug("genererPreviewVideo Erreur download fichier avec downloaderFichierProtege : %O", err)
-    return {ok: false, err: ''+err}
+  // Downloader fichier, preparer cle
+  let cleFichier = null
+  let stagingFichier = _downloadManager.getFichierCache(hachageFichier)
+  if(!stagingFichier) {
+    try {
+      cleFichier = await recupererCle(_mq, hachageFichier)
+      debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
+      stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true})
+    } catch(err) {
+      debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", hachageFichier, err)
+      return {ok: false, err: 'Cles non disponibles : '+err}
+    }
+  } else {
+    cleFichier = stagingFichier.cle
   }
+
+  const fichierDechiffre = stagingFichier.path
+  
+  // const cleFichier = await recupererCle(_mq, hachageFichier)
+  const {cleSymmetrique, informationCle, clesPubliques} = cleFichier
+  // // Downloader et dechiffrer le fichier
+  // try {
+  //   var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
+  //     hachageFichier, mimetype, cleFichier, {extension})
+  // } catch(err) {
+  //   debug("genererPreviewVideo Erreur download fichier avec downloaderFichierProtege : %O", err)
+  //   return {ok: false, err: ''+err}
+  // }
 
   // Transmettre transaction preview
   // const domaineActionAssocierPreview = 'GrosFichiers.associerPreview'
@@ -460,40 +479,60 @@ async function _traiterCommandeTranscodage(message) {
     return
   }
 
-  const cleFichier = await recupererCle(_mq, fuuid)
+  // Downloader fichier, preparer cle
+  let cleFichier = null
+  let stagingFichier = _downloadManager.getFichierCache(fuuid)
+  if(!stagingFichier) {
+    try {
+      cleFichier = await recupererCle(_mq, fuuid)
+      debug("Cle pour %s est dechiffree, info : %O", fuuid, cleFichier.metaCle)
+      stagingFichier = await _downloadManager.downloaderFuuid(fuuid, cleFichier, {mimetype, dechiffrer: true})
+    } catch(err) {
+      debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", fuuid, err)
+      return {ok: false, err: 'Cles non disponibles : '+err}
+    }
+  } else {
+    cleFichier = stagingFichier.cle
+  }
+
+  const fichierDechiffre = stagingFichier.path
+  
+  // const cleFichier = await recupererCle(_mq, fuuid)
   const {cleSymmetrique, informationCle, clesPubliques} = cleFichier
 
   debug("_traiterCommandeTranscodage fuuid: %s, cle: %O", fuuid, informationCle)
 
   // Creer un progress cb regulier - utilise comme healthcheck pour eviter la reallocation de la conversion de fichier
-  const progressDownload = params => {
-    params = params || {}
-    position = params.position || 0
+  // const progressDownload = params => {
+  //   params = params || {}
+  //   position = params.position || 0
 
-    const {fuuid, cle_conversion } = message
-    const [mimetype, videoCodec, heightStr, videoQuality ] = cle_conversion.split(';')
-    const height = Number.parseInt(heightStr.replace('p', ''))
-    const paramsVideo = {fuuid, mimetype, videoCodec, height, videoQuality, etat: 'downloading'}
-    progressUpdate(_mq, paramsVideo, {percent: 0})
-  }
+  //   const {fuuid, cle_conversion } = message
+  //   const [mimetype, videoCodec, heightStr, videoQuality ] = cle_conversion.split(';')
+  //   const height = Number.parseInt(heightStr.replace('p', ''))
+  //   const paramsVideo = {fuuid, mimetype, videoCodec, height, videoQuality, etat: 'downloading'}
+  //   progressUpdate(_mq, paramsVideo, {percent: 0})
+  // }
 
-  let timeoutProgressDownload = setTimeout(progressDownload, 20000)
+  // let timeoutProgressDownload = setTimeout(progressDownload, 20000)
 
-  // Downloader et dechiffrer le fichier
-  try {
-    progressDownload()
-    var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
-      fuuid, mimetype, cleFichier, {progress: progressDownload})
-  } catch(err) {
-    debug("_traiterCommandeTranscodage Erreur download fichier avec downloaderFichierProtege : %O", err)
-    return {ok: false, err: ''+err}
-  } finally {
-    clearTimeout(timeoutProgressDownload)
-  }
+  // // Downloader et dechiffrer le fichier
+  // try {
+  //   progressDownload()
+  //   var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
+  //     fuuid, mimetype, cleFichier, {progress: progressDownload})
+  // } catch(err) {
+  //   debug("_traiterCommandeTranscodage Erreur download fichier avec downloaderFichierProtege : %O", err)
+  //   return {ok: false, err: ''+err}
+  // } finally {
+  //   clearTimeout(timeoutProgressDownload)
+  // }
 
   try {
     debug("_traiterCommandeTranscodage fichier temporaire: %s", fichierDechiffre)
 
+    stagingFichier.actif = true
+    stagingFichier.dernierAcces = new Date()
     await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, reponseGetJob, _storeConsignation, {cleSecrete: cleSymmetrique})
       .catch(err=>{
         debug("media._traiterCommandeTranscodage ERROR Erreur transcodage  %s: %O", fuuid, err)
@@ -505,11 +544,14 @@ async function _traiterCommandeTranscodage(message) {
   } finally {
     // maintenant autoclean
     //if(cleanup) cleanup()
+    stagingFichier.actif = false
+    stagingFichier.dernierAcces = new Date()
   }
 }
 
 async function _indexerDocumentContenu(message) {
   debug("Traitement _indexerDocumentContenu : %O", message)
+  throw new Error('not implemented')
 
   // Verifier si la commande est expiree
   if(_mq.estExpire(message, {expiration: EXPIRATION_MESSAGE_DEFAUT})) {

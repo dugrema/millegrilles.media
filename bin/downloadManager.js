@@ -108,6 +108,7 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
             uploadsEnCours: [],  // Liste de sessions d'upload en cours
             uploade: false,      // Indique qu'au moins 1 upload du cache a ete complete avec succes
             supprimer: false,    // Indique qu'on peut supprimer le cache
+            actif: false,        // Si true, est utilise par un process (ne pas supprimer)
         }
         this.fuuidsStaging[fuuid] = staging
 
@@ -166,10 +167,12 @@ MediaDownloadManager.prototype.pipeDecipher = async function(fuuid, outStream) {
           cle = staging.cle
 
     const readStream = fs.createReadStream(pathFichier)
-    readStream.on('data', ()=>{
-        staging.dernierAcces = new Date()  // Permet de s'assurer que le fichier ne sera pas supprime
-    })
-    await dechiffrerStream(readStream, cle, outStream)
+    try {
+        staging.actif = true  // Lock pour eviter suppression
+        await dechiffrerStream(readStream, cle, outStream)
+    } finally {
+        staging.actif = false
+    }
 }
 
 MediaDownloadManager.prototype.threadTransfert = async function() {
@@ -186,7 +189,7 @@ MediaDownloadManager.prototype.threadTransfert = async function() {
                   callbacks = stagingInfo.callbacksPending
             try {
                 debug("threadTransfert Traiter GET pour item %s", fuuid)
-                stagingInfo.downloadEnCours = true
+                stagingInfo.actif = true
                 const pathFichier = await this.getFichier(fuuid)
                 stagingInfo.path = pathFichier
                 for await (let cb of callbacks) {
@@ -198,7 +201,7 @@ MediaDownloadManager.prototype.threadTransfert = async function() {
                     await cb({err})
                 }
             } finally {
-                stagingInfo.downloadEnCours = false
+                stagingInfo.actif = false
                 stagingInfo.callbacksPending = undefined
                 stagingInfo.dernierAcces = new Date()
             }
@@ -267,7 +270,7 @@ MediaDownloadManager.prototype.entretien = async function() {
                 debug("Cleanup fichier incomplet ", fuuid)
                 staging.supprimer = true
             }
-        } else if(staging.downloadEnCours === true) {
+        } else if(staging.actif === true) {
             // Ok
         } else if( ! this.queueFuuids.includes(fuuid)) {
             if(!staging.dernierAcces || staging.dernierAcces.getTime() < expireIncomplet) {

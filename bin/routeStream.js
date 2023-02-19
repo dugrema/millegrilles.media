@@ -94,118 +94,118 @@ async function downloadVideoPrive(req, res, next) {
 
 }
 
-async function downloadVideoPriveOld(req, res, next) {
-    debug("downloadVideoPrive methode:" + req.method + ": " + req.url);
-    debug("Headers : %O\nAutorisation: %o", req.headers, req.autorisationMillegrille);
+// async function downloadVideoPriveOld(req, res, next) {
+//     debug("downloadVideoPrive methode:" + req.method + ": " + req.url);
+//     debug("Headers : %O\nAutorisation: %o", req.headers, req.autorisationMillegrille);
 
-    var mq = req.amqpdao
-    const fuuid = res.fuuid,
-          userId = res.userId,
-          cleRefFuuid = res.cleRefFuuid,
-          format = res.format,
-          header = res.header,
-          iv = res.iv,
-          tag = res.tag,
-          roles = res.roles || []
+//     var mq = req.amqpdao
+//     const fuuid = res.fuuid,
+//           userId = res.userId,
+//           cleRefFuuid = res.cleRefFuuid,
+//           format = res.format,
+//           header = res.header,
+//           iv = res.iv,
+//           tag = res.tag,
+//           roles = res.roles || []
 
-    debug("Verifier l'acces est autorise %s, ref fuuid %s", req.url, cleRefFuuid)
+//     debug("Verifier l'acces est autorise %s, ref fuuid %s", req.url, cleRefFuuid)
 
-    // Demander une permission de dechiffrage et stager le fichier.
-    try {
-        let cacheEntry = req.transfertConsignation.getCacheItem(fuuid)
-        if(!cacheEntry) {
-            debug("Cache MISS sur %s dechiffre", fuuid)
+//     // Demander une permission de dechiffrage et stager le fichier.
+//     try {
+//         let cacheEntry = req.transfertConsignation.getCacheItem(fuuid)
+//         if(!cacheEntry) {
+//             debug("Cache MISS sur %s dechiffre", fuuid)
 
-            let domaine = 'GrosFichiers'
-            if(roles.includes('messagerie_web')) domaine = 'Messagerie'
+//             let domaine = 'GrosFichiers'
+//             if(roles.includes('messagerie_web')) domaine = 'Messagerie'
 
-            debug("Demande cle dechiffrage a %s (stream: true)", domaine)
-            const cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
-            debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
+//             debug("Demande cle dechiffrage a %s (stream: true)", domaine)
+//             const cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
+//             debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
 
-            if(!cleDechiffrage || !cleDechiffrage.metaCle) {
-                debug("Acces cle refuse : ", cleDechiffrage)
-                return res.sendStatus(403)
-            }
+//             if(!cleDechiffrage || !cleDechiffrage.metaCle) {
+//                 debug("Acces cle refuse : ", cleDechiffrage)
+//                 return res.sendStatus(403)
+//             }
 
-            const metaCle = cleDechiffrage.metaCle
+//             const metaCle = cleDechiffrage.metaCle
 
-            metaCle.header = header || metaCle.header
-            metaCle.iv = iv || metaCle.iv
-            metaCle.tag = tag || metaCle.tag
-            metaCle.format = format || metaCle.format
+//             metaCle.header = header || metaCle.header
+//             metaCle.iv = iv || metaCle.iv
+//             metaCle.tag = tag || metaCle.tag
+//             metaCle.format = format || metaCle.format
 
-            // let paramsGrosFichiers = {nom: fichierMetadata.nom}
-            let paramsGrosFichiers = {nom: fuuid}
+//             // let paramsGrosFichiers = {nom: fichierMetadata.nom}
+//             let paramsGrosFichiers = {nom: fuuid}
 
-            let mimetype = res.mimetype
+//             let mimetype = res.mimetype
 
-            // Stager le fichier dechiffre
-            try {
-                debug("Stager fichier %s : %O", fuuid, cleDechiffrage)
-                cacheEntry = await req.transfertConsignation.getDownloadCacheFichier(
-                    fuuid, mimetype, cleDechiffrage, {metadata: paramsGrosFichiers})
+//             // Stager le fichier dechiffre
+//             try {
+//                 debug("Stager fichier %s : %O", fuuid, cleDechiffrage)
+//                 cacheEntry = await req.transfertConsignation.getDownloadCacheFichier(
+//                     fuuid, mimetype, cleDechiffrage, {metadata: paramsGrosFichiers})
                 
-                // Attendre fin du dechiffrage
-                await cacheEntry.ready
-                debug("Cache ready pour %s", fuuid)
-            } catch(err) {
-                debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
-                return res.sendStatus(500)
-            }
-        } else {
-            debug("Cache HIT sur %s dechiffre", fuuid)
-        }
+//                 // Attendre fin du dechiffrage
+//                 await cacheEntry.ready
+//                 debug("Cache ready pour %s", fuuid)
+//             } catch(err) {
+//                 debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
+//                 return res.sendStatus(500)
+//             }
+//         } else {
+//             debug("Cache HIT sur %s dechiffre", fuuid)
+//         }
 
-        debug("Fichier a streamer : %O", cacheEntry)
-        res.cacheEntry = cacheEntry
+//         debug("Fichier a streamer : %O", cacheEntry)
+//         res.cacheEntry = cacheEntry
 
-        const pathFichierDechiffre = cacheEntry.decryptedPath,
-              metadata = cacheEntry.metadata,
-              mimetype = cacheEntry.mimetype
+//         const pathFichierDechiffre = cacheEntry.decryptedPath,
+//               metadata = cacheEntry.metadata,
+//               mimetype = cacheEntry.mimetype
 
-        const statFichier = await fsPromises.stat(pathFichierDechiffre)
-        debug("Stat fichier %s :\n%O", pathFichierDechiffre, statFichier)
+//         const statFichier = await fsPromises.stat(pathFichierDechiffre)
+//         debug("Stat fichier %s :\n%O", pathFichierDechiffre, statFichier)
 
-        res.fuuid = fuuid
+//         res.fuuid = fuuid
 
-        // Preparer le fichier dechiffre dans repertoire de staging
-        // const infoFichierEffectif = await stagingPublic(pathConsignation, fuuidEffectif, infoStream)
-        res.stat = statFichier
-        res.filePath = pathFichierDechiffre
+//         // Preparer le fichier dechiffre dans repertoire de staging
+//         // const infoFichierEffectif = await stagingPublic(pathConsignation, fuuidEffectif, infoStream)
+//         res.stat = statFichier
+//         res.filePath = pathFichierDechiffre
 
-        // Ajouter information de header pour slicing (HTTP 206)
-        // res.setHeader('Content-Length', res.stat.size)
-        res.setHeader('Accept-Ranges', 'bytes')
+//         // Ajouter information de header pour slicing (HTTP 206)
+//         // res.setHeader('Content-Length', res.stat.size)
+//         res.setHeader('Accept-Ranges', 'bytes')
 
-        // res.setHeader('Content-Length', res.tailleFichier)
-        res.setHeader('Content-Type', mimetype)
+//         // res.setHeader('Content-Length', res.tailleFichier)
+//         res.setHeader('Content-Type', mimetype)
 
-        // Cache control public, permet de faire un cache via proxy (nginx)
-        res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
-        res.setHeader('fuuid', res.fuuid)
-        res.setHeader('securite', '2.prive')
-        res.setHeader('Last-Modified', res.stat.mtime)
+//         // Cache control public, permet de faire un cache via proxy (nginx)
+//         res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
+//         res.setHeader('fuuid', res.fuuid)
+//         res.setHeader('securite', '2.prive')
+//         res.setHeader('Last-Modified', res.stat.mtime)
     
-        const range = req.headers.range
-        if(range) {
-            debug("Range request : %s, taille fichier %s", range, res.stat.size)
-            const infoRange = readRangeHeader(range, res.stat.size)
-            debug("Range retourne : %O", infoRange)
-            res.range = infoRange
+//         const range = req.headers.range
+//         if(range) {
+//             debug("Range request : %s, taille fichier %s", range, res.stat.size)
+//             const infoRange = readRangeHeader(range, res.stat.size)
+//             debug("Range retourne : %O", infoRange)
+//             res.range = infoRange
 
-            res.setHeader('Content-Length', infoRange.End - infoRange.Start + 1)
-        } else {
-            res.setHeader('Content-Length', res.stat.size)
-        }
+//             res.setHeader('Content-Length', infoRange.End - infoRange.Start + 1)
+//         } else {
+//             res.setHeader('Content-Length', res.stat.size)
+//         }
 
-    } catch(err) {
-        console.error("Erreur traitement dechiffrage stream pour %s:\n%O", req.url, err)
-        return res.sendStatus(500)
-    }
+//     } catch(err) {
+//         console.error("Erreur traitement dechiffrage stream pour %s:\n%O", req.url, err)
+//         return res.sendStatus(500)
+//     }
 
-    next()
-}
+//     next()
+// }
 
 // Sert a preparer un fichier temporaire local pour determiner la taille, supporter slicing
 async function pipeReponse(req, res, next) {

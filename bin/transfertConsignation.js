@@ -52,193 +52,193 @@ function init(amqpdao, storeConsignation) {
 
 function entretien() {
   debug("run Entretien")
-  cleanupStagingDechiffre()
-    .catch(err=>console.error("ERROR transfertConsignation.entretien Erreur cleanupStagingDechiffre : %O", err))
+  // cleanupStagingDechiffre()
+  //   .catch(err=>console.error("ERROR transfertConsignation.entretien Erreur cleanupStagingDechiffre : %O", err))
 }
 
-async function cleanupStagingDechiffre() {
-  debug("Entretien cleanupStagingDechiffre")
-  const dateCourante = new Date().getTime(),
-        dateExpiree = dateCourante - EXPIRATION_DECHIFFRE
+// async function cleanupStagingDechiffre() {
+//   debug("Entretien cleanupStagingDechiffre")
+//   const dateCourante = new Date().getTime(),
+//         dateExpiree = dateCourante - EXPIRATION_DECHIFFRE
   
-  for await (const entry of readdirp(PATH_MEDIA_DECHIFFRE_STAGING, {type: 'files', alwaysStat: true})) {
-    const { basename, fullPath, stats } = entry
-    debug("Entry fichier staging dechiffre : %s", fullPath)
-    const fichierParse = path.parse(basename)
-    const hachage_bytes = fichierParse.name
-    const { mtimeMs } = stats
-    if(!downloadCache[hachage_bytes] && mtimeMs < dateExpiree) {
-      debug("cleanupStagingDechiffre Suppression fichier dechifre expire : %s", basename)
-      try {
-        await fsPromises.rm(fullPath)
-      } catch(err) {
-        debug("cleanupStagingDechiffre Erreur suppression fichier expire %s : %O", fullPath, err)
-      }
-    }
-  }
+//   for await (const entry of readdirp(PATH_MEDIA_DECHIFFRE_STAGING, {type: 'files', alwaysStat: true})) {
+//     const { basename, fullPath, stats } = entry
+//     debug("Entry fichier staging dechiffre : %s", fullPath)
+//     const fichierParse = path.parse(basename)
+//     const hachage_bytes = fichierParse.name
+//     const { mtimeMs } = stats
+//     if(!downloadCache[hachage_bytes] && mtimeMs < dateExpiree) {
+//       debug("cleanupStagingDechiffre Suppression fichier dechifre expire : %s", basename)
+//       try {
+//         await fsPromises.rm(fullPath)
+//       } catch(err) {
+//         debug("cleanupStagingDechiffre Erreur suppression fichier expire %s : %O", fullPath, err)
+//       }
+//     }
+//   }
 
-}
+// }
 
 // Download et dechiffre un fichier protege pour traitement local
-async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier, opts) {
-  opts = opts || {}
-  let downloadCacheFichier = getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts)
-  const pathFichier = await downloadCacheFichier.ready
-  return { path: pathFichier, cleanup: downloadCacheFichier.clean, cacheEntry: downloadCacheFichier }
-}
+// async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier, opts) {
+//   opts = opts || {}
+//   let downloadCacheFichier = getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts)
+//   const pathFichier = await downloadCacheFichier.ready
+//   return { path: pathFichier, cleanup: downloadCacheFichier.clean, cacheEntry: downloadCacheFichier }
+// }
 
-function getCacheItem(hachage_bytes) {
-  let downloadCacheFichier = downloadCache[hachage_bytes]
+// function getCacheItem(hachage_bytes) {
+//   let downloadCacheFichier = downloadCache[hachage_bytes]
   
-  // Touch
-  if(downloadCacheFichier) {
-    downloadCacheFichier.lastAccess = new Date()
-    if(downloadCacheFichier.timeout) {
-      downloadCacheFichier.activerTimer()  // Reset le timer
-    }
-  }
+//   // Touch
+//   if(downloadCacheFichier) {
+//     downloadCacheFichier.lastAccess = new Date()
+//     if(downloadCacheFichier.timeout) {
+//       downloadCacheFichier.activerTimer()  // Reset le timer
+//     }
+//   }
 
-  return downloadCacheFichier
-}
+//   return downloadCacheFichier
+// }
 
-function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
-  opts = opts || {}
+// function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
+//   opts = opts || {}
 
-  let downloadCacheFichier = downloadCache[hachage_bytes]
-  if(!downloadCacheFichier) {
-    const url = new URL(''+_storeConsignation.getUrlTransfert())
-    url.pathname = path.join(url.pathname, hachage_bytes)
-    debug("Url download fichier : %O", url)
+//   let downloadCacheFichier = downloadCache[hachage_bytes]
+//   if(!downloadCacheFichier) {
+//     const url = new URL(''+_storeConsignation.getUrlTransfert())
+//     url.pathname = path.join(url.pathname, hachage_bytes)
+//     debug("Url download fichier : %O", url)
   
-    const extension = MIMETYPE_EXT_MAP[mimetype] || opts.extension || 'bin'
+//     const extension = MIMETYPE_EXT_MAP[mimetype] || opts.extension || 'bin'
   
-    const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + '.' + extension)
-    debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
+//     const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + '.' + extension)
+//     debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
 
-    downloadCacheFichier = {
-      creation: new Date(),
-      hachage_bytes,
-      mimetype,
-      decryptedPath,
-      ready: null,    // Promise, resolve quand fichier prete (err sinon)
-      clean: null,    // Fonction qui supprime le fichier dechiffre
-      timeout: null,  // timeout qui va appeler cleanup(), doit etre resette/cleare si le fichier est utilise
-      activerTimer: null,  // Activer timer
-    }
+//     downloadCacheFichier = {
+//       creation: new Date(),
+//       hachage_bytes,
+//       mimetype,
+//       decryptedPath,
+//       ready: null,    // Promise, resolve quand fichier prete (err sinon)
+//       clean: null,    // Fonction qui supprime le fichier dechiffre
+//       timeout: null,  // timeout qui va appeler cleanup(), doit etre resette/cleare si le fichier est utilise
+//       activerTimer: null,  // Activer timer
+//     }
 
-    if(opts.metadata) downloadCacheFichier.metadata = opts.metadata
+//     if(opts.metadata) downloadCacheFichier.metadata = opts.metadata
 
-    downloadCache[hachage_bytes] = downloadCacheFichier
+//     downloadCache[hachage_bytes] = downloadCacheFichier
     
-    downloadCacheFichier.clean = () => {
-      delete downloadCache[hachage_bytes]
-      return fsPromises.rm(decryptedPath)  // function pour nettoyer le fichier
-    }
+//     downloadCacheFichier.clean = () => {
+//       delete downloadCache[hachage_bytes]
+//       return fsPromises.rm(decryptedPath)  // function pour nettoyer le fichier
+//     }
     
-    downloadCacheFichier.activerTimer = delai => {
-      delai = delai || EXPIRATION_DECHIFFRE
+//     downloadCacheFichier.activerTimer = delai => {
+//       delai = delai || EXPIRATION_DECHIFFRE
 
-      if(downloadCacheFichier.timeout) clearTimeout(downloadCacheFichier.timeout)
+//       if(downloadCacheFichier.timeout) clearTimeout(downloadCacheFichier.timeout)
 
-      downloadCacheFichier.timeout = setTimeout(()=>{
-        downloadCacheFichier.clean()
-          .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
-      }, delai)
-    }
+//       downloadCacheFichier.timeout = setTimeout(()=>{
+//         downloadCacheFichier.clean()
+//           .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
+//       }, delai)
+//     }
 
-    // Lancer le download (promise)
-    downloadCacheFichier.ready = new Promise(async (resolve, reject) => {
+//     // Lancer le download (promise)
+//     downloadCacheFichier.ready = new Promise(async (resolve, reject) => {
 
-      try {
-        await fsPromises.stat(decryptedPath)
-        debug("getDownloadCacheFichier Le fichier %s existe deja, on l'utilise", decryptedPath)
-      } catch(err) {
-        debug("getDownloadCacheFichier Err : %O", err)
-        debug("Le fichier %s n'existe pas, on le download", decryptedPath)
+//       try {
+//         await fsPromises.stat(decryptedPath)
+//         debug("getDownloadCacheFichier Le fichier %s existe deja, on l'utilise", decryptedPath)
+//       } catch(err) {
+//         debug("getDownloadCacheFichier Err : %O", err)
+//         debug("Le fichier %s n'existe pas, on le download", decryptedPath)
 
-        const decryptedWorkPath = decryptedPath + '.work'
-        try {
-          try {
-            // Verifier si le fichier work existe
-            debug("Verifier si le fichier %s existe", decryptedWorkPath)
-            await fsPromises.stat(decryptedWorkPath)
-            debug("Le fichier de download existe deja, on va attendre que le fichier soit libere")
-            await new Promise((resolve, reject) => {
-              try {
-                const timeout = setTimeout(()=>{
-                  // Abandonner le caching du fichier (echec)
-                  delete downloadCache[hachage_bytes]
-                  reject('timeout')
-                }, 60000)
-                fs.watchFile(decryptedWorkPath, (curr, prev) => {
-                  debug("getDownloadCacheFichier curr : %O, prev: %O", curr, prev)
-                  if(curr.mtimeMs === 0) {  // Fichier est supprime
-                    clearTimeout(timeout)
-                    return resolve()
-                  }
-                })
-              } catch(err) {
-                return reject(err)
-              }
-            })
-          } catch(err) {
-            debug("Le fichier de download n'existe pas, on commence un nouveau download")
-            const reponseFichier = await axios({
-              method: 'GET',
-              url: url.href,
-              httpsAgent: _httpsAgent,
-              responseType: 'stream',
-              timeout: 7500,
-            })
+//         const decryptedWorkPath = decryptedPath + '.work'
+//         try {
+//           try {
+//             // Verifier si le fichier work existe
+//             debug("Verifier si le fichier %s existe", decryptedWorkPath)
+//             await fsPromises.stat(decryptedWorkPath)
+//             debug("Le fichier de download existe deja, on va attendre que le fichier soit libere")
+//             await new Promise((resolve, reject) => {
+//               try {
+//                 const timeout = setTimeout(()=>{
+//                   // Abandonner le caching du fichier (echec)
+//                   delete downloadCache[hachage_bytes]
+//                   reject('timeout')
+//                 }, 60000)
+//                 fs.watchFile(decryptedWorkPath, (curr, prev) => {
+//                   debug("getDownloadCacheFichier curr : %O, prev: %O", curr, prev)
+//                   if(curr.mtimeMs === 0) {  // Fichier est supprime
+//                     clearTimeout(timeout)
+//                     return resolve()
+//                   }
+//                 })
+//               } catch(err) {
+//                 return reject(err)
+//               }
+//             })
+//           } catch(err) {
+//             debug("Le fichier de download n'existe pas, on commence un nouveau download")
+//             const reponseFichier = await axios({
+//               method: 'GET',
+//               url: url.href,
+//               httpsAgent: _httpsAgent,
+//               responseType: 'stream',
+//               timeout: 7500,
+//             })
     
-            try {
-              debug("Reponse download fichier : %O", reponseFichier.status)
-              const writeStream = fs.createWriteStream(decryptedWorkPath)
-              await dechiffrerStream(reponseFichier.data, cleFichier, writeStream, opts)
+//             try {
+//               debug("Reponse download fichier : %O", reponseFichier.status)
+//               const writeStream = fs.createWriteStream(decryptedWorkPath)
+//               await dechiffrerStream(reponseFichier.data, cleFichier, writeStream, opts)
     
-              await fsPromises.rename(decryptedWorkPath, decryptedPath)
-            } finally {
-              fsPromises.rm(decryptedWorkPath).catch(err => { 
-                // Ok, fichier avait deja ete traite
-              })
-            }
-          } finally {
-            fs.unwatchFile(decryptedWorkPath)
-          }
+//               await fsPromises.rename(decryptedWorkPath, decryptedPath)
+//             } finally {
+//               fsPromises.rm(decryptedWorkPath).catch(err => { 
+//                 // Ok, fichier avait deja ete traite
+//               })
+//             }
+//           } finally {
+//             fs.unwatchFile(decryptedWorkPath)
+//           }
   
-        } catch(err) {
-          debug("Erreur download fichier %s : %O", hachage_bytes, err)
-          downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
-          delete downloadCache[hachage_bytes]
-          return reject(err)
-        }
+//         } catch(err) {
+//           debug("Erreur download fichier %s : %O", hachage_bytes, err)
+//           downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
+//           delete downloadCache[hachage_bytes]
+//           return reject(err)
+//         }
 
-      } // fin catch, download/dechiffrage fichier
+//       } // fin catch, download/dechiffrage fichier
 
-      try {
+//       try {
 
-        // Creer un timer de cleanup automatique
-        downloadCacheFichier.activerTimer()
+//         // Creer un timer de cleanup automatique
+//         downloadCacheFichier.activerTimer()
 
-        return resolve(decryptedPath)
+//         return resolve(decryptedPath)
 
-      } catch(err) {
-        debug("Erreur download fichier %s : %O", hachage_bytes, err)
-        downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
-        delete downloadCache[hachage_bytes]
-        return reject(err)
-      }
-    })
-  }
+//       } catch(err) {
+//         debug("Erreur download fichier %s : %O", hachage_bytes, err)
+//         downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
+//         delete downloadCache[hachage_bytes]
+//         return reject(err)
+//       }
+//     })
+//   }
 
-  downloadCacheFichier.lastAccess = new Date()
+//   downloadCacheFichier.lastAccess = new Date()
 
-  if(downloadCacheFichier.timeout) {
-    downloadCacheFichier.activerTimer()  // Reset le timer
-  }
+//   if(downloadCacheFichier.timeout) {
+//     downloadCacheFichier.activerTimer()  // Reset le timer
+//   }
 
-  return downloadCacheFichier
-}
+//   return downloadCacheFichier
+// }
 
 // Chiffre et upload un fichier cree localement
 // Supprime les fichiers source et chiffres
@@ -303,47 +303,50 @@ async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_doc
 
 }
 
-async function dechiffrerStream(stream, cleFichier, writeStream, opts) {
-  opts = opts || {}
-  debug("dechiffrerStream cleFichier : %O", cleFichier)
-  const decipherTransformStream = await decipherTransform(cleFichier.cleSymmetrique, {...cleFichier.metaCle})
+// async function dechiffrerStream(stream, cleFichier, writeStream, opts) {
+//   opts = opts || {}
+//   debug("dechiffrerStream cleFichier : %O", cleFichier)
+//   const decipherTransformStream = await decipherTransform(cleFichier.cleSymmetrique, {...cleFichier.metaCle})
 
-  const progress = opts.progress
-  let prochainUpdate = 0, position = 0
+//   const progress = opts.progress
+//   let prochainUpdate = 0, position = 0
 
-  const promiseTraitement = new Promise((resolve, reject)=>{
-    try {
-      decipherTransformStream.on('data', chunk=>{
-        position += chunk.length
+//   const promiseTraitement = new Promise((resolve, reject)=>{
+//     try {
+//       decipherTransformStream.on('data', chunk=>{
+//         position += chunk.length
 
-        // Updates (keep-alive process)
-        const current = new Date().getTime()
-        if(prochainUpdate < current) {
-          if(progress) progress({position})
-          prochainUpdate = current + 5 * 60 * 1000  // 5 secondes
-        }
-      });
-      decipherTransformStream.on('end', ()=>{
-        if(progress) progress({position, size: position, complete: true})
-        resolve()
-      });
-      decipherTransformStream.on('error', err=>{
-        debug("dechiffrerStream Erreur : %O", err)
-        reject(err)
-      });
-    } catch(err) {
-      debug("Erreur preparation events readable : %O", err)
-      reject(err)
-    }
-  })
+//         // Updates (keep-alive process)
+//         const current = new Date().getTime()
+//         if(prochainUpdate < current) {
+//           if(progress) progress({position})
+//           prochainUpdate = current + 5 * 60 * 1000  // 5 secondes
+//         }
+//       });
+//       decipherTransformStream.on('end', ()=>{
+//         if(progress) progress({position, size: position, complete: true})
+//         resolve()
+//       });
+//       decipherTransformStream.on('error', err=>{
+//         debug("dechiffrerStream Erreur : %O", err)
+//         reject(err)
+//       });
+//     } catch(err) {
+//       debug("Erreur preparation events readable : %O", err)
+//       reject(err)
+//     }
+//   })
 
-  // Pipe dechiffrage -> writer
-  decipherTransformStream.pipe(writeStream)
+//   // Pipe dechiffrage -> writer
+//   decipherTransformStream.pipe(writeStream)
 
-  // Pipe la reponse chiffree dans le dechiffreur
-  stream.pipe(decipherTransformStream)
+//   // Pipe la reponse chiffree dans le dechiffreur
+//   stream.pipe(decipherTransformStream)
 
-  return promiseTraitement
+//   return promiseTraitement
+// }
+
+module.exports = {
+  init, stagerFichier, 
+  // downloaderFichierProtege, getCacheItem, getDownloadCacheFichier
 }
-
-module.exports = {init, downloaderFichierProtege, stagerFichier, getCacheItem, getDownloadCacheFichier}
