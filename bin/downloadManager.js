@@ -6,6 +6,8 @@ const axios = require('axios')
 const https = require('https')
 const readdirp = require('readdirp')
 
+const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
+
 const { decipherTransform } = require('./cryptoUtils')
 
 const INTERVALLE_RUN_TRANSFERT = 120_000
@@ -224,32 +226,8 @@ MediaDownloadManager.prototype.parseCache = async function() {
     const pathChiffre = path.join(this.pathStaging, 'chiffre'),
           pathDechiffre = path.join(this.pathStaging, 'dechiffre')
 
-    for await (const entry of readdirp(pathChiffre, {type: 'files'})) {
-        const { basename, fullPath, stats } = entry
-        debug("Entry fichier cache : %s", fullPath)
-        const fichierParse = path.parse(basename)
-        const fuuid = fichierParse.name
-
-        let staging = this.fuuidsStaging[fuuid]
-        if(!staging) {
-            staging = {
-                fuuid,
-                cle: null,
-                mimetype: null,
-                dechiffrer: false,
-                path: fullPath,
-
-                callbacksPending: null,
-                dateCreation: new Date(),
-                dernierAcces: new Date(),
-
-                uploade: false,      // Indique qu'au moins 1 upload du cache a ete complete avec succes
-                supprimer: false,    // Indique qu'on peut supprimer le cache
-            }
-            this.fuuidsStaging[fuuid] = staging
-            debug("Recover fichier staging ", staging)
-        }        
-    }
+    await this.parseExistants(pathChiffre, false)
+    await this.parseExistants(pathDechiffre, true)
 }
 
 /** Parse les fichiers deja present dans le cache chiffre/dechiffre */
@@ -318,13 +296,15 @@ MediaDownloadManager.prototype.entretien = async function() {
 MediaDownloadManager.prototype.getFichier = async function(fuuid) {
     debug("getFichier %s", fuuid)
     const staging = this.fuuidsStaging[fuuid]
-    const dechiffrer = staging.dechiffrer
-    const pathFichier = dechiffrer?path.join(this.pathStaging, 'dechiffre', fuuid):path.join(this.pathStaging, 'chiffre', fuuid)
+    let pathFichier = null
 
     let pathFichierWork = path.join(this.pathStaging, 'work', fuuid)
     if(staging.dechiffrer === true && staging.mimetype) {
-        throw new Error('not implemented')
         // Ajouter extension fichier. Utilise par ffmpeg et imagemagick.
+        const extension = MIMETYPE_EXT_MAP[staging.mimetype] || 'bin'
+        pathFichier = path.join(this.pathStaging, 'dechiffre', fuuid + '.' + extension)
+    } else {
+        pathFichier = path.join(this.pathStaging, 'chiffre', fuuid)        
     }
 
     const url = new URL('' + this.storeConsignation.getUrlTransfert())
@@ -347,7 +327,7 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
             streamWriter.on('error', reject)
 
             if(staging.dechiffrer === true) {
-                reject(new Error('not implemented'))
+                dechiffrerStream(reponse.data, staging.cle, streamWriter).catch(reject)
             } else {
                 reponse.data.pipe(streamWriter)
             }
@@ -361,6 +341,35 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
         fsPromises.unlink(pathFichierWork)
             .catch(err=>console.error("Erreur supprimer fichier work %s : %O", pathFichierWork, err))
         throw err
+    }
+}
+
+MediaDownloadManager.prototype.parseExistants = async function(directory, dechiffrer) {
+    for await (const entry of readdirp(directory, {type: 'files'})) {
+        const { basename, fullPath } = entry
+        debug("Entry fichier cache : %s", fullPath)
+        const fichierParse = path.parse(basename)
+        const fuuid = fichierParse.name
+
+        let staging = this.fuuidsStaging[fuuid]
+        if(!staging) {
+            staging = {
+                fuuid,
+                cle: null,
+                mimetype: null,
+                dechiffrer: dechiffrer || false,
+                path: fullPath,
+
+                callbacksPending: null,
+                dateCreation: new Date(),
+                dernierAcces: new Date(),
+
+                uploade: false,      // Indique qu'au moins 1 upload du cache a ete complete avec succes
+                supprimer: false,    // Indique qu'on peut supprimer le cache
+            }
+            this.fuuidsStaging[fuuid] = staging
+            debug("Recover fichier staging ", staging)
+        }        
     }
 }
 

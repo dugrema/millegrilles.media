@@ -129,22 +129,32 @@ async function genererPreviewImage(message) {
     }
   }
 
-  try {
-    var cleFichier = await recupererCle(_mq, hachageFichier)
-    debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
-  } catch(err) {
-    debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", hachageFichier, err)
-    return {ok: false, err: 'Cles non disponibles : '+err}
+  let cleFichier = null
+  let stagingFichier = _downloadManager.getFichierCache(hachageFichier)
+  if(!stagingFichier) {
+    try {
+      cleFichier = await recupererCle(_mq, hachageFichier)
+      debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
+      stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true})
+    } catch(err) {
+      debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", hachageFichier, err)
+      return {ok: false, err: 'Cles non disponibles : '+err}
+    }
+  } else {
+    cleFichier = stagingFichier.cle
   }
 
-  // Downloader et dechiffrer le fichier
-  try {
-    var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
-      hachageFichier, mimetype, cleFichier, {extension})
-  } catch(err) {
-    debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
-    return {ok: false, err: ''+err}
-  }
+  const fichierDechiffre = stagingFichier.path
+
+  // // Downloader et dechiffrer le fichier
+  // try {
+  //   var {path: fichierDechiffre, cleanup} = await _transfertConsignation.downloaderFichierProtege(
+  //     hachageFichier, mimetype, cleFichier, {extension})
+
+  // } catch(err) {
+  //   debug("genererPreviewImage Erreur download fichier avec downloaderFichierProtege : %O", err)
+  //   return {ok: false, err: ''+err}
+  // }
 
   const {cleSymmetrique, clesPubliques} = cleFichier
   var resultatConversion = null
@@ -156,13 +166,14 @@ async function genererPreviewImage(message) {
   } catch(err) {
     debug("genererPreviewImage Erreur creation preview image %s : %O", hachageFichier, err)
     return {ok: false, err: 'Erreur creation preview image : '+err}
-  } finally {
-    // Note: pour pdf, on utilise autoclean (indexation survient en meme temps)
-    if(mimetype !== 'application/pdf') {
-      // Nettoyer fichier dechiffre temporaire
-      cleanup().catch(err=>console.debug("Erreur suppression fichier dechiffre %s : %O", hachageFichier, err))
-    }
   }
+  // finally {
+  //   // Note: pour pdf, on utilise autoclean (indexation survient en meme temps)
+  //   if(mimetype !== 'application/pdf') {
+  //     // Nettoyer fichier dechiffre temporaire
+  //     cleanup().catch(err=>console.debug("Erreur suppression fichier dechiffre %s : %O", hachageFichier, err))
+  //   }
+  // }
 
   try {
     const {nbFrames, conversions} = resultatConversion
@@ -190,6 +201,12 @@ async function genererPreviewImage(message) {
     // ).catch(err=>{
     //     console.error("ERROR media.genererPreviewImage Erreur association conversions d'image : %O", err)
     //   })
+
+    if(mimetype.startsWith('image/')) {
+      // Le fichier est une image - il ne reste aucun traitement media supplementaire a faire
+      _downloadManager.setFichierDownloadOk(hachageFichier)
+    }
+
   } catch(err) {
     debug("genererPreviewImage Erreur preparation resultat conversion fichier %s : %O", hachageFichier, err)
     return {ok: false, err: 'Erreur preparation resultat conversion : '+err}
