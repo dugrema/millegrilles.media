@@ -74,8 +74,8 @@ MediaDownloadManager.prototype.getFichierCache = function(fuuid) {
 }
 
 MediaDownloadManager.prototype.attendreDownload = async function(fuuid, opts) {
-    const timeoutDuration = opts.timeout || 15_000
     const staging = this.fuuidsStaging[fuuid]
+    const timeoutDuration = opts.timeout || staging.timeout || 15_000
     if(staging) {
         if(staging.promiseReady) {
             const timeoutPromise = new Promise(resolve => setTimeout(()=>resolve({timeout: true}), timeoutDuration))
@@ -111,6 +111,7 @@ MediaDownloadManager.prototype.downloaderFuuid = async function(fuuid, cle, opts
             cle,
             mimetype,
             dechiffrer,          // Si true, indique qu'on doit dechiffrer le cache sur disque
+            timeout: opts.timeout,
 
             path: null,
 
@@ -312,6 +313,7 @@ MediaDownloadManager.prototype.entretien = async function() {
 MediaDownloadManager.prototype.getFichier = async function(fuuid) {
     debug("getFichier %s", fuuid)
     const staging = this.fuuidsStaging[fuuid]
+    const timeout = staging.timeout || 5000
     let pathFichier = null
 
     let pathFichierWork = path.join(this.pathStaging, 'work', fuuid)
@@ -330,14 +332,36 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
     try {
         // download axios
         debug("getFichier download %s", url.href)
-        const reponse = await axios({
-            method: 'GET', 
-            url: url.href, 
-            httpsAgent: this.httpsAgent,
-            responseType: 'stream',
-            timeout: 5000,
-        })
-        debug("getFichier reponse %O\nCache vers %O", reponse.headers, pathFichierWork)
+        const expiration = new Date().getTime() + timeout
+
+        let reponse = null, err = null
+        while(!reponse) {
+            try {
+                reponse = await axios({
+                    method: 'GET', 
+                    url: url.href, 
+                    httpsAgent: this.httpsAgent,
+                    responseType: 'stream',
+                    timeout,
+                    maxRedirects: 2,
+                })
+                debug("getFichier reponse %O\nCache vers %O", reponse.headers, pathFichierWork)
+                err = null
+            } catch(errAxios) {
+                err = errAxios
+                debug("getFichier Axios error : ", errAxios)
+                const response = errAxios.response
+                const status = response.status
+                if(status === 404 && expiration > new Date().getTime() + 5000) {
+                    // Le fichier n'est pas encore arrive, reessayer
+                    await new Promise(resolve=>setTimeout(resolve, 5000))
+                } else {
+                    throw errAxios
+                }
+            }
+        }
+
+        if(!reponse) throw err
         
         const size = reponse.headers['content-length']
         staging.size = size
@@ -374,7 +398,10 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
     } catch(err) {
         // Supprimer fichier work
         fsPromises.unlink(pathFichierWork)
-            .catch(err=>console.error("Erreur supprimer fichier work %s : %O", pathFichierWork, err))
+            .catch(err=>{
+                if(err.code === 'ENOENT') return  // Ok, fichier n'existait pas
+                console.error("Erreur supprimer fichier work %s : %O", pathFichierWork, err)
+            })
         throw err
     }
 }
