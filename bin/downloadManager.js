@@ -325,6 +325,7 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
 
     const url = new URL('' + this.getUrlTransfert())
     url.pathname = path.join(url.pathname, fuuid)
+    url.searchParams.set('internal', '1')  // Flag qui indique requete pour consommation interne
 
     try {
         // download axios
