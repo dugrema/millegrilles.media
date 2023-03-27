@@ -313,7 +313,8 @@ MediaDownloadManager.prototype.entretien = async function() {
 MediaDownloadManager.prototype.getFichier = async function(fuuid) {
     debug("getFichier %s", fuuid)
     const staging = this.fuuidsStaging[fuuid]
-    const timeout = staging.timeout || 5000
+    const timeout = staging.timeout || 5000,
+          retryInterval = staging.retryInterval || 7500
     let pathFichier = null
 
     let pathFichierWork = path.join(this.pathStaging, 'work', fuuid)
@@ -352,9 +353,9 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
                 debug("getFichier Axios error : ", errAxios)
                 const response = errAxios.response
                 const status = response.status
-                if(status === 404 && expiration > new Date().getTime() + 5000) {
+                if(status === 404 && expiration > new Date().getTime() + retryInterval) {
                     // Le fichier n'est pas encore arrive, reessayer
-                    await new Promise(resolve=>setTimeout(resolve, 5000))
+                    await new Promise(resolve=>setTimeout(resolve, retryInterval))
                 } else {
                     throw errAxios
                 }

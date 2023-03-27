@@ -132,7 +132,7 @@ async function genererPreviewImage(message) {
     try {
       cleFichier = await recupererCle(_mq, hachageFichier)
       debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
-      stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true, timeout: 10000})
+      stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true, timeout: 25000})
     } catch(err) {
       debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", hachageFichier, err)
       return {ok: false, err: 'Cles non disponibles : '+err}
@@ -332,7 +332,7 @@ async function genererPreviewVideo(message) {
     try {
       cleFichier = await recupererCle(_mq, hachageFichier)
       debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
-      stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true, timeout: 30000})
+      stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true, timeout: 47000})
     } catch(err) {
       debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", hachageFichier, err)
       return {ok: false, err: 'Cles non disponibles : '+err}
@@ -448,7 +448,7 @@ async function _traiterCommandeTranscodage(message) {
     try {
       cleFichier = await recupererCle(_mq, fuuid)
       debug("Cle pour %s est dechiffree, info : %O", fuuid, cleFichier.metaCle)
-      stagingFichier = await _downloadManager.downloaderFuuid(fuuid, cleFichier, {mimetype, dechiffrer: true, timeout: 30000})
+      stagingFichier = await _downloadManager.downloaderFuuid(fuuid, cleFichier, {mimetype, dechiffrer: true, timeout: 47000})
     } catch(err) {
       debug("genererPreviewImage Erreur cles fichier %s non disponible : %O", fuuid, err)
       return {ok: false, err: 'Cles non disponibles : '+err}
