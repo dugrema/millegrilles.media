@@ -8,7 +8,8 @@ const logger = require('morgan')
 const redis = require("redis")
 const fs = require('fs')
 
-const backingStore = require('@dugrema/millegrilles.nodejs/src/fichiersTransfertBackingstore')
+// const backingStore = require('@dugrema/millegrilles.nodejs/src/fichiersTransfertBackingstore')
+const FichiersTransfertUpstream  = require('@dugrema/millegrilles.nodejs/src/fichiersTransfertUpstream.js')
 const transfertConsignation = require('./transfertConsignation')
 
 const {initialiser: initialiserServer} = require('./server')
@@ -69,15 +70,17 @@ async function init() {
 
   debug("Initialisation serveur IDMG : %s", idmg)
 
-  backingStore.configurerThreadPutFichiersConsignation(instAmqpdao, {url: URL_CONSIGNATION_FICHIERS, PATH_STAGING})
+  const fichierTransfert = new FichiersTransfertUpstream(instAmqpdao, {PATH_STAGING})
+  //backingStore.configurerThreadPutFichiersConsignation(instAmqpdao, {url: URL_CONSIGNATION_FICHIERS, PATH_STAGING})
 
   // Download manager
-  const downloadManager = new MediaDownloadManager(instAmqpdao, PATH_STAGING, backingStore)
+  const getUrlTransfert = () => fichierTransfert.getUrlConsignationTransfert()
+  const downloadManager = new MediaDownloadManager(instAmqpdao, PATH_STAGING, getUrlTransfert)
   await downloadManager.init()
 
   // Injecter dans media
-  transfertConsignation.init(instAmqpdao, backingStore)
-  messageHandler.setStoreConsignation(instAmqpdao, backingStore, transfertConsignation, downloadManager)
+  transfertConsignation.init(fichierTransfert)
+  messageHandler.setHandlers(instAmqpdao, transfertConsignation, downloadManager)
 
   const middleware = [
     logger('dev'),
@@ -85,7 +88,6 @@ async function init() {
       req.amqpdao = instAmqpdao
       req.rabbitMQ = instAmqpdao
       req.idmg = idmg
-      req.storeConsignation = backingStore
       req.transfertConsignation = transfertConsignation
       req.downloadManager = downloadManager
       next()

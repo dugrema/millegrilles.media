@@ -16,7 +16,6 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
 
 // Variables globales
 var _mq = null,
-    _storeConsignation = null  // injecte dans www,
     _transfertConsignation = null,
     _downloadManager = null,
     activerQueuesProcessing = true
@@ -29,12 +28,9 @@ function setMq(mq, opts) {
   debug("IDMG RabbitMQ %s", this.idmg)
 }
 
-function setStoreConsignation(mq, storeConsignation, transfertConsignation, downloadManager) {
+function setHandlers(mq, transfertConsignation, downloadManager) {
   // Config upload consignation
-  debug("Set store consignation : %O", storeConsignation)
-  _storeConsignation = storeConsignation
   if(!_mq) setMq(mq)
-  //transfertConsignation.init(urlConsignationFichiers, mq, storeConsignation)
   _transfertConsignation = transfertConsignation
   _downloadManager = downloadManager
 }
@@ -219,16 +215,15 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
   // Extraire information d'images converties sous un dict
   const images = {}
 
-  const identificateurs_document = {type: 'image', fuuid_reference: fuuid}
   // Conserver dict de labels d'images (e.g. image.thumb, image.small)
   const thumbnails = conversions.filter(item=>['thumb', 'small'].includes(item.cle)).reduce((acc, item)=>{
     acc[item.cle] = item
     return acc
   }, {})
+
   const imagesLarges = conversions.filter(item=>!['thumb', 'small'].includes(item.cle))
 
   debug("Images thumbnails: %O\nImages larges: %O", thumbnails, imagesLarges)
-  // debug("Chiffrer avec cle existante : %O", cleFichier)
 
   const cleSecrete = cleFichier.cleSymmetrique
 
@@ -236,18 +231,16 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
   {
     const thumb = {...thumbnails.thumb.informationImage},
           small = {...thumbnails.small.informationImage}
-    const {uuidCorrelation, hachage, taille, header, format} = await _transfertConsignation.stagerFichier(
-      _mq, thumbnails.small.fichierTmp, clesPubliques, identificateurs_document, {cle: cleSecrete})
 
-    try {
-      // Ajouter information pour image small
-      small.hachage = hachage
-      small.taille = taille
-      small.header = header
-      small.format = format
-       
-      let transactionContenu = {...transactionAssocier}
+    const generateurTransaction = async infoSmall => {
+      small.hachage = infoSmall.hachage
+      small.taille = infoSmall.taille
+      small.header = infoSmall.header
+      small.format = infoSmall.format
+      
+      const transactionContenu = {...transactionAssocier}
       transactionContenu.images = {thumb, small}
+      
       // Cleanup transaction
       const transactionMetadata = transactionContenu.metadata
       if(transactionContenu.duration === 'N/A') delete transactionContenu.duration
@@ -255,22 +248,15 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
         if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
       }
 
-      transactionContenu = await _mq.pki.formatterMessage(
+      const transactionSignee = await _mq.pki.formatterMessage(
         transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
-      debug("Transaction thumbnails : %O", transactionContenu)
+      debug("Transaction thumbnails : ", transactionSignee)
 
-      // Emettre la commande de maitre des cles du thumbnail. Les autres cles sont transferees au store de consignation.
-      // const commandeClesThumbnail = thumbnails.thumb.commandeMaitreCles
-      // const partition = commandeClesThumbnail._partition
-      // delete commandeClesThumbnail._partition
-      // await _mq.transmettreCommande(DOMAINE_MAITREDESCLES, commandeClesThumbnail, {action: ACTION_SAUVEGARDERCLE, partition})
-
-      await _storeConsignation.stagingReady(_mq, hachage, transactionContenu, uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
-
-    } catch(err) {
-      await _storeConsignation.stagingDelete(uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
-      throw err
+      return transactionSignee
     }
+
+    await _transfertConsignation.stagerFichier(thumbnails.small.fichierTmp, cleSecrete, {generateurTransaction})
+    
   }
 
   // Uploader images larges (individuellement)
@@ -281,15 +267,14 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
     images[cle] = resultat
 
     // Chiffrer et conserver image dans staging local pour upload vers consignation
-    const {uuidCorrelation, hachage, taille, header, format} = await _transfertConsignation.stagerFichier(
-      _mq, conversion.fichierTmp, clesPubliques, identificateurs_document, {cle: cleSecrete})
-    try {
-      resultat.hachage = hachage
-      resultat.taille = taille
-      resultat.header = header
-      resultat.format = format
+    // const {uuidCorrelation, hachage, taille, header, format} = 
+    const generateurTransaction = async infoImage => {
+      resultat.hachage = infoImage.hachage
+      resultat.taille = infoImage.taille
+      resultat.header = infoImage.header
+      resultat.format = infoImage.format
 
-      let transactionContenu = {...transactionAssocier}
+      const transactionContenu = {...transactionAssocier}
       transactionContenu.images = {[cle]: resultat}
 
       // Cleanup transaction
@@ -299,39 +284,16 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
         if(transactionMetadata.nbFrames === 'N/A') delete transactionMetadata.nbFrames
       }
 
-      transactionContenu = await _mq.pki.formatterMessage(
+      const transactionSignee = await _mq.pki.formatterMessage(
         transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
       debug("Transaction contenu image : %O", transactionContenu)
-      await _storeConsignation.stagingReady(_mq, hachage, transactionContenu, uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
-    } catch(err) {
-      await _storeConsignation.stagingDelete(uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
-      throw err
+      
+      return transactionSignee
     }
+
+    await _transfertConsignation.stagerFichier(conversion.fichierTmp, cleSecrete, {generateurTransaction})
+
   }
-
-  // for(let idx in conversions) {
-  //   const conversion = conversions[idx]
-  //   const resultat = {...conversion.informationImage}
-  //   const cle = conversion.cle
-  //   images[cle] = resultat
-
-  //   if(conversion.fichierTmp) {
-  //     // Chiffrer et uploader le fichier tmp
-  //     const {hachage, taille} = await _transfertConsignation.uploaderFichierTraite(
-  //       _mq, conversion.fichierTmp, clesPubliques, identificateurs_document)
-  //     // Ajouter nouveau hachage (fuuid fichier converti)
-  //     resultat.hachage = hachage
-  //     resultat.taille = taille
-  //   }
-
-  //   if (conversion.commandeMaitreCles) {
-  //     // Emettre la commande de maitre des cles
-  //     const commandeMaitreCles = conversion.commandeMaitreCles
-  //     const partition = commandeMaitreCles._partition
-  //     delete commandeMaitreCles._partition
-  //     await _mq.transmettreCommande(DOMAINE_MAITREDESCLES, commandeMaitreCles, {action: ACTION_SAUVEGARDERCLE, partition})
-  //   }
-  // }
 
   return images
 }
@@ -533,7 +495,7 @@ async function _traiterCommandeTranscodage(message) {
 
     stagingFichier.actif = true
     stagingFichier.dernierAcces = new Date()
-    await traiterCommandeTranscodage(_mq, fichierDechiffre, clesPubliques, reponseGetJob, _storeConsignation, {cleSecrete: cleSymmetrique})
+    await traiterCommandeTranscodage(_mq, fichierDechiffre, reponseGetJob, {cleSecrete: cleSymmetrique})
       .catch(err=>{
         debug("media._traiterCommandeTranscodage ERROR Erreur transcodage  %s: %O", fuuid, err)
         return {ok: false, err: 'Erreur transcodage '+err}
@@ -597,4 +559,4 @@ async function _indexerDocumentContenu(message) {
   }
 }
 
-module.exports = {setMq, setStoreConsignation, on_connecter, genererPreviewImage}
+module.exports = {setMq, setHandlers, on_connecter, genererPreviewImage}

@@ -1,352 +1,148 @@
-// Effectue le transfert avec le serveur de consignation
+// Prepare le fichier a uploader
 const debug = require('debug')('transfertConsignation')
-const axios = require('axios')
-const https = require('https')
 const fs = require('fs')
 const fsPromises = require('fs/promises')
 const {v4: uuidv4} = require('uuid')
 const path = require('path')
-
 const readdirp = require('readdirp')
 
-const MIMETYPE_EXT_MAP = require('@dugrema/millegrilles.utiljs/res/mimetype_ext.json')
+const { creerOutputstreamChiffrageParSecret } = require('./cryptoUtils')
 
-const {decipherTransform, creerOutputstreamChiffrageParSecret} = require('./cryptoUtils')
-
-const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
-      ACTION_SAUVEGARDERCLE = 'sauvegarderCle',
-      UPLOAD_TAILLE_BLOCK = 5 * 1024 * 1024  // 5 MB,
-      PATH_MEDIA_STAGING = '/var/opt/millegrilles/consignation/staging/media',
+const PATH_MEDIA_STAGING = '/var/opt/millegrilles/consignation/staging/media',
+      DIR_MEDIA_PREPARATION = 'prep',
       PATH_MEDIA_DECHIFFRE_STAGING = '/var/opt/millegrilles/consignation/staging/mediaDechiffre',
-      EXPIRATION_DECHIFFRE = 30 * 60_000,
-      INTERVALLE_ENTRETIEN = 5 * 60_000
+      FILE_TRANSACTION_CONTENU = 'transactionContenu.json',
+      EXPIRATION_PREP = 3_600_000 * 8
 
-const downloadCache = {}
+var _fichiersTransfert = null
 
-//var _urlServeurConsignation = null,
-var _httpsAgent = null,
-    _storeConsignation = null,
-    _intervalEntretien = setInterval(entretien, INTERVALLE_ENTRETIEN)
+function init(fichiersTransfert) {
+  debug("Initialiser transfertConsignation")
 
-function init(amqpdao, storeConsignation) {
-  debug("Initialiser transfertConsignation avec url %s", storeConsignation.getUrlTransfert())
-  
-  _storeConsignation = storeConsignation
+  _fichiersTransfert = fichiersTransfert
 
+  // Preparer repertoires
   fsPromises.mkdir(PATH_MEDIA_STAGING, {recursive: true}).catch(err=>console.error("ERROR Erreur mkdir %s", PATH_MEDIA_STAGING))
   fsPromises.mkdir(PATH_MEDIA_DECHIFFRE_STAGING, {recursive: true}).catch(err=>console.error("ERROR Erreur mkdir %s", PATH_MEDIA_DECHIFFRE_STAGING))
 
-  const pki = amqpdao.pki
-  // Configurer httpsAgent avec les certificats/cles
-  // Note: pas de verif CA, la destination peut etre un serveur public 
-  //       (Host Gator, Amazon, CloudFlare, etc.). C'est safe, le contenu 
-  //       est chiffre et la cle est separee et signee.
-  _httpsAgent = new https.Agent({
-    rejectUnauthorized: false,
-    // ca: pki.ca,
-    cert: pki.chainePEM,
-    key: pki.cle,
-  })
-
+  // Faire un entretien initial, ceduler a toutes les 30 minutes
+  entretien().catch(err=>console.error(new Date() + " transfertConsignation.entretien ERROR ", err))
+  setInterval(entretien, 60_000 * 30)
 }
 
-function entretien() {
-  debug("run Entretien")
-  // cleanupStagingDechiffre()
-  //   .catch(err=>console.error("ERROR transfertConsignation.entretien Erreur cleanupStagingDechiffre : %O", err))
+/** Supprime les batch abandonnees */
+async function entretien() {
+
+  try {
+    const pathPrep = path.join(PATH_MEDIA_STAGING, DIR_MEDIA_PREPARATION)
+    const dateExpiration = new Date().getTime() - EXPIRATION_PREP
+    debug("entretien Date expiration prep : ", dateExpiration)
+
+    for await (const entry of readdirp(pathPrep, {type: 'directories', alwaysStat: true, depth: 1})) {
+      const { fullPath, stats } = entry
+      const { mtimeMs } = stats
+      if(mtimeMs < dateExpiration) {
+        try {
+          await fsPromises.rm(fullPath, {recursive: true})
+          debug("Suppression entry fichier work : %s, mod time %s", fullPath, mtimeMs)
+        } catch(err) {
+          console.error(new Date() + " transfertConsignation.entretien ERROR Suppression %s : %O", fullPath, err)
+        }
+      } else {
+        debug("Entry fichier work : %s, mod time %s", fullPath, mtimeMs)
+      }
+    }
+  } catch(err) {
+    console.error(new Date() + " transfertConsignation.entretien ERROR ", err)
+  }
 }
-
-// async function cleanupStagingDechiffre() {
-//   debug("Entretien cleanupStagingDechiffre")
-//   const dateCourante = new Date().getTime(),
-//         dateExpiree = dateCourante - EXPIRATION_DECHIFFRE
-  
-//   for await (const entry of readdirp(PATH_MEDIA_DECHIFFRE_STAGING, {type: 'files', alwaysStat: true})) {
-//     const { basename, fullPath, stats } = entry
-//     debug("Entry fichier staging dechiffre : %s", fullPath)
-//     const fichierParse = path.parse(basename)
-//     const hachage_bytes = fichierParse.name
-//     const { mtimeMs } = stats
-//     if(!downloadCache[hachage_bytes] && mtimeMs < dateExpiree) {
-//       debug("cleanupStagingDechiffre Suppression fichier dechifre expire : %s", basename)
-//       try {
-//         await fsPromises.rm(fullPath)
-//       } catch(err) {
-//         debug("cleanupStagingDechiffre Erreur suppression fichier expire %s : %O", fullPath, err)
-//       }
-//     }
-//   }
-
-// }
-
-// Download et dechiffre un fichier protege pour traitement local
-// async function downloaderFichierProtege(hachage_bytes, mimetype, cleFichier, opts) {
-//   opts = opts || {}
-//   let downloadCacheFichier = getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts)
-//   const pathFichier = await downloadCacheFichier.ready
-//   return { path: pathFichier, cleanup: downloadCacheFichier.clean, cacheEntry: downloadCacheFichier }
-// }
-
-// function getCacheItem(hachage_bytes) {
-//   let downloadCacheFichier = downloadCache[hachage_bytes]
-  
-//   // Touch
-//   if(downloadCacheFichier) {
-//     downloadCacheFichier.lastAccess = new Date()
-//     if(downloadCacheFichier.timeout) {
-//       downloadCacheFichier.activerTimer()  // Reset le timer
-//     }
-//   }
-
-//   return downloadCacheFichier
-// }
-
-// function getDownloadCacheFichier(hachage_bytes, mimetype, cleFichier, opts) {
-//   opts = opts || {}
-
-//   let downloadCacheFichier = downloadCache[hachage_bytes]
-//   if(!downloadCacheFichier) {
-//     const url = new URL(''+_storeConsignation.getUrlTransfert())
-//     url.pathname = path.join(url.pathname, hachage_bytes)
-//     debug("Url download fichier : %O", url)
-  
-//     const extension = MIMETYPE_EXT_MAP[mimetype] || opts.extension || 'bin'
-  
-//     const decryptedPath = path.join(PATH_MEDIA_DECHIFFRE_STAGING, hachage_bytes + '.' + extension)
-//     debug("Fichier temporaire pour dechiffrage : %s", decryptedPath)
-
-//     downloadCacheFichier = {
-//       creation: new Date(),
-//       hachage_bytes,
-//       mimetype,
-//       decryptedPath,
-//       ready: null,    // Promise, resolve quand fichier prete (err sinon)
-//       clean: null,    // Fonction qui supprime le fichier dechiffre
-//       timeout: null,  // timeout qui va appeler cleanup(), doit etre resette/cleare si le fichier est utilise
-//       activerTimer: null,  // Activer timer
-//     }
-
-//     if(opts.metadata) downloadCacheFichier.metadata = opts.metadata
-
-//     downloadCache[hachage_bytes] = downloadCacheFichier
-    
-//     downloadCacheFichier.clean = () => {
-//       delete downloadCache[hachage_bytes]
-//       return fsPromises.rm(decryptedPath)  // function pour nettoyer le fichier
-//     }
-    
-//     downloadCacheFichier.activerTimer = delai => {
-//       delai = delai || EXPIRATION_DECHIFFRE
-
-//       if(downloadCacheFichier.timeout) clearTimeout(downloadCacheFichier.timeout)
-
-//       downloadCacheFichier.timeout = setTimeout(()=>{
-//         downloadCacheFichier.clean()
-//           .catch(err=>console.error("ERROR Erreur autoclean fichier dechiffre %s : %O", hachage_bytes, err))
-//       }, delai)
-//     }
-
-//     // Lancer le download (promise)
-//     downloadCacheFichier.ready = new Promise(async (resolve, reject) => {
-
-//       try {
-//         await fsPromises.stat(decryptedPath)
-//         debug("getDownloadCacheFichier Le fichier %s existe deja, on l'utilise", decryptedPath)
-//       } catch(err) {
-//         debug("getDownloadCacheFichier Err : %O", err)
-//         debug("Le fichier %s n'existe pas, on le download", decryptedPath)
-
-//         const decryptedWorkPath = decryptedPath + '.work'
-//         try {
-//           try {
-//             // Verifier si le fichier work existe
-//             debug("Verifier si le fichier %s existe", decryptedWorkPath)
-//             await fsPromises.stat(decryptedWorkPath)
-//             debug("Le fichier de download existe deja, on va attendre que le fichier soit libere")
-//             await new Promise((resolve, reject) => {
-//               try {
-//                 const timeout = setTimeout(()=>{
-//                   // Abandonner le caching du fichier (echec)
-//                   delete downloadCache[hachage_bytes]
-//                   reject('timeout')
-//                 }, 60000)
-//                 fs.watchFile(decryptedWorkPath, (curr, prev) => {
-//                   debug("getDownloadCacheFichier curr : %O, prev: %O", curr, prev)
-//                   if(curr.mtimeMs === 0) {  // Fichier est supprime
-//                     clearTimeout(timeout)
-//                     return resolve()
-//                   }
-//                 })
-//               } catch(err) {
-//                 return reject(err)
-//               }
-//             })
-//           } catch(err) {
-//             debug("Le fichier de download n'existe pas, on commence un nouveau download")
-//             const reponseFichier = await axios({
-//               method: 'GET',
-//               url: url.href,
-//               httpsAgent: _httpsAgent,
-//               responseType: 'stream',
-//               timeout: 7500,
-//             })
-    
-//             try {
-//               debug("Reponse download fichier : %O", reponseFichier.status)
-//               const writeStream = fs.createWriteStream(decryptedWorkPath)
-//               await dechiffrerStream(reponseFichier.data, cleFichier, writeStream, opts)
-    
-//               await fsPromises.rename(decryptedWorkPath, decryptedPath)
-//             } finally {
-//               fsPromises.rm(decryptedWorkPath).catch(err => { 
-//                 // Ok, fichier avait deja ete traite
-//               })
-//             }
-//           } finally {
-//             fs.unwatchFile(decryptedWorkPath)
-//           }
-  
-//         } catch(err) {
-//           debug("Erreur download fichier %s : %O", hachage_bytes, err)
-//           downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
-//           delete downloadCache[hachage_bytes]
-//           return reject(err)
-//         }
-
-//       } // fin catch, download/dechiffrage fichier
-
-//       try {
-
-//         // Creer un timer de cleanup automatique
-//         downloadCacheFichier.activerTimer()
-
-//         return resolve(decryptedPath)
-
-//       } catch(err) {
-//         debug("Erreur download fichier %s : %O", hachage_bytes, err)
-//         downloadCacheFichier.clean().catch(err=>debug("Erreur nettoyage fichier dechiffre %s : %O", decryptedPath, err))
-//         delete downloadCache[hachage_bytes]
-//         return reject(err)
-//       }
-//     })
-//   }
-
-//   downloadCacheFichier.lastAccess = new Date()
-
-//   if(downloadCacheFichier.timeout) {
-//     downloadCacheFichier.activerTimer()  // Reset le timer
-//   }
-
-//   return downloadCacheFichier
-// }
 
 // Chiffre et upload un fichier cree localement
 // Supprime les fichiers source et chiffres
-async function stagerFichier(mq, pathFichier, clesPubliques, identificateurs_document, opts) {
+async function stagerFichier(fichier, cleSecrete, opts) {
   opts = opts || {}
-  const cleSecrete = opts.cle
-
-  // debug("Upload fichier traite : %s", pathFichier)
-  // debug("CLES PUBLIQUES : %O", clesPubliques)
-  const pathStr = pathFichier.path || pathFichier
-  const cleanup = pathFichier.cleanup
-
-  const uuidCorrelation = ''+uuidv4()
-  const url = new URL(_storeConsignation.getUrlTransfert())
+  const pathStr = fichier.path || fichier
+  const cleanup = fichier.cleanup
+  const readStream = fs.createReadStream(pathStr)
   try {
-    const readStream = fs.createReadStream(pathStr)
-
-    // Creer stream chiffrage
-    // const infoCertCa = {cert: mq.pki.caForge, fingerprint: mq.pki.fingerprintCa}
-    // const chiffrageStream = await creerOutputstreamChiffrage(clesPubliques, identificateurs_document, 'GrosFichiers', infoCertCa)
-    const chiffrageStream = await creerOutputstreamChiffrageParSecret(cleSecrete)
-    readStream.pipe(chiffrageStream)
-
-    await _storeConsignation.stagingStream(
-      chiffrageStream, uuidCorrelation, 
-      {TAILLE_SPLIT: UPLOAD_TAILLE_BLOCK, PATH_STAGING: PATH_MEDIA_STAGING}
-    )
-
-    debug("Fin Chiffrage Stream : %O", chiffrageStream)
-
-    // Signer commande maitre des cles
-    // var commandeMaitrecles = chiffrageStream.commandeMaitredescles
-    const resultatChiffrage = chiffrageStream.resultatChiffrage || {},
-          {taille, hachage, header, format} = resultatChiffrage
-
-    // const partition = commandeMaitrecles._partition
-    // delete commandeMaitrecles['_partition']
-    // commandeMaitrecles = await mq.pki.formatterMessage(
-    //   commandeMaitrecles, DOMAINE_MAITREDESCLES, {action: ACTION_SAUVEGARDERCLE, partition})
-
-    // debug("Commande maitre des cles signee : %O", commandeMaitrecles)
-
-    return {
-      uuidCorrelation, 
-      // commandeMaitrecles, 
-      hachage, 
-      taille,
-      header,
-      format
-    }
-
-  } catch(e) {
-    debug("Erreur upload fichier traite %s, DELETE tmp serveur. Erreur : %O", uuidCorrelation, e)
-    url.pathname = '/fichiers_transfert/' + uuidCorrelation
-    await _storeConsignation.stagingDelete(uuidCorrelation, {PATH_STAGING: PATH_MEDIA_STAGING})
-    // await axios({method: 'DELETE', httpsAgent: _httpsAgent, url: url.href})
-    throw e  // Rethrow
+    return await stagerStream(readStream, cleSecrete, opts)
   } finally {
     // Supprimer fichier temporaire
     if(cleanup) cleanup()
   }
+}
+
+async function stagerStream(readStream, cleSecrete, opts) {
+  opts = opts || {}
+
+  const generateurTransaction = opts.generateurTransaction
+
+  // Generer identificateurs, paths
+  const uuidCorrelation = ''+uuidv4()
+  const batchId = uuidCorrelation  // On a juste besoin d'un batchId unique pour le repertoire
+  const pathBatch = path.join(PATH_MEDIA_STAGING, DIR_MEDIA_PREPARATION, batchId)
+  const pathDirFichier = path.join(pathBatch, uuidCorrelation)
+  const pathFichierTmp = path.join(pathDirFichier, 'output.tmp')
+
+  try {
+    // Preparer repertoire de batch/fichier
+    await fsPromises.mkdir(pathDirFichier, {recursive: true})
+    
+    // Creer stream chiffrage
+    const chiffrageStream = await creerOutputstreamChiffrageParSecret(cleSecrete)
+    readStream.pipe(chiffrageStream)
+
+    const writeStream = fs.createWriteStream(pathFichierTmp)
+    const promiseWrite = new Promise((resolve, reject)=>{
+      writeStream.on('close', resolve)
+      writeStream.on('error', reject)
+    })
+    chiffrageStream.pipe(writeStream)
+    await promiseWrite
+
+    // Signer commande maitre des cles
+    // {taille, hachage, header, format} = resultatChiffrage
+    const resultatChiffrage = chiffrageStream.resultatChiffrage || {}
+    debug("Fin Chiffrage Stream : ", resultatChiffrage)
+
+    // Renommer fichier en utilisant son hachage (fuuid)
+    const pathFichierFuuid = path.join(pathDirFichier, resultatChiffrage.hachage)
+    await fsPromises.rename(pathFichierTmp, pathFichierFuuid)
+
+    // Creer fichier etat.json (requis pour transfert de fichier)
+    await creerEtat(pathDirFichier, resultatChiffrage.hachage)
+
+    let transaction = null
+    if(generateurTransaction) {
+      const pathTransaction = path.join(pathDirFichier, FILE_TRANSACTION_CONTENU)
+      transaction = await generateurTransaction(resultatChiffrage)
+      await fsPromises.writeFile(pathTransaction, JSON.stringify(transaction))
+    }
+
+    // Declencher le transfert
+    await _fichiersTransfert.takeTransfertBatch(batchId, pathBatch)
+    await _fichiersTransfert.ajouterFichierConsignation(batchId)
+
+    return { batchId, uuidCorrelation, ...resultatChiffrage, transaction }
+
+  } catch(e) {
+    debug("Erreur staging fichier traite %s, DELETE tmp. Erreur : %O", uuidCorrelation, e)
+    await fsPromises.mkdir(pathBatch, {recursive: true})
+    throw e  // Rethrow
+  }
 
 }
 
-// async function dechiffrerStream(stream, cleFichier, writeStream, opts) {
-//   opts = opts || {}
-//   debug("dechiffrerStream cleFichier : %O", cleFichier)
-//   const decipherTransformStream = await decipherTransform(cleFichier.cleSymmetrique, {...cleFichier.metaCle})
+async function creerEtat(pathFichier, hachage) {
+  const etat = {
+    hachage,
+    created: new Date().getTime(),
+    lastProcessed: new Date().getTime(),
+    retryCount: 0,
+  }
 
-//   const progress = opts.progress
-//   let prochainUpdate = 0, position = 0
-
-//   const promiseTraitement = new Promise((resolve, reject)=>{
-//     try {
-//       decipherTransformStream.on('data', chunk=>{
-//         position += chunk.length
-
-//         // Updates (keep-alive process)
-//         const current = new Date().getTime()
-//         if(prochainUpdate < current) {
-//           if(progress) progress({position})
-//           prochainUpdate = current + 5 * 60 * 1000  // 5 secondes
-//         }
-//       });
-//       decipherTransformStream.on('end', ()=>{
-//         if(progress) progress({position, size: position, complete: true})
-//         resolve()
-//       });
-//       decipherTransformStream.on('error', err=>{
-//         debug("dechiffrerStream Erreur : %O", err)
-//         reject(err)
-//       });
-//     } catch(err) {
-//       debug("Erreur preparation events readable : %O", err)
-//       reject(err)
-//     }
-//   })
-
-//   // Pipe dechiffrage -> writer
-//   decipherTransformStream.pipe(writeStream)
-
-//   // Pipe la reponse chiffree dans le dechiffreur
-//   stream.pipe(decipherTransformStream)
-
-//   return promiseTraitement
-// }
-
-module.exports = {
-  init, stagerFichier, 
-  // downloaderFichierProtege, getCacheItem, getDownloadCacheFichier
+  const pathEtat = path.join(pathFichier, 'etat.json')
+  await fsPromises.writeFile(pathEtat, JSON.stringify(etat))
 }
+
+module.exports = { init, stagerFichier, stagerStream }

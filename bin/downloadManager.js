@@ -20,10 +20,10 @@ const EXPIRATION_COMPLETE = 5 * 60_000,
  * Manager de download de fichiers de media.
  * Download, dechiffre et gere le repertoire de media dechiffre.
  */
-function MediaDownloadManager(mq, pathStaging, storeConsignation) {
+function MediaDownloadManager(mq, pathStaging, getUrlTransfert) {
     this.mq = mq
     this.pathStaging = pathStaging
-    this.storeConsignation = storeConsignation
+    this.getUrlTransfert = getUrlTransfert
 
     this.queueFuuids = []
     
@@ -199,7 +199,10 @@ MediaDownloadManager.prototype.threadTransfert = async function() {
                 stagingInfo.promiseResolve(stagingInfo)
             } catch(err) {
                 stagingInfo.err = err
-                stagingInfo.promiseReject(err)
+                if(stagingInfo.promiseReject) stagingInfo.promiseReject(err)
+                else {
+                    console.error(new Date() + " ERROR MediaDownloadManager.threadTransfert while loop Erreur ", err)
+                }
             } finally {
                 stagingInfo.actif = false
                 stagingInfo.promiseReady = undefined
@@ -239,7 +242,8 @@ MediaDownloadManager.prototype.parseCache = async function() {
 MediaDownloadManager.prototype.cleanupWork = async function() {
     const pathWork = path.join(this.pathStaging, 'work')
 
-    const dateExpiration = new Date() - EXPIRATION_WORK
+    const dateExpiration = new Date().getTime() - EXPIRATION_WORK
+    debug("cleanupWork Date expiration work : ", dateExpiration)
 
     for await (const entry of readdirp(pathWork, {type: 'files', alwaysStat: true})) {
         const { fullPath, stats } = entry
@@ -286,12 +290,16 @@ MediaDownloadManager.prototype.entretien = async function() {
     for (let fuuid of Object.keys(this.fuuidsStaging)) {
         const staging = this.fuuidsStaging[fuuid]
         if(staging.supprimer === true) {
-            if(staging.path) {
-                debug("entretien Supprimer fichier %s", staging.path)
-                fsPromises.unlink(staging.path).catch(err=>console.error("Erreur cleanup %s : %O", staging.path, err))
-            }
-            if(staging.promiseReject) {
-                staging.promiseReject(new Error('cleanup'))
+            try {
+                if(staging.path) {
+                    debug("entretien Supprimer fichier %s", staging.path)
+                    fsPromises.unlink(staging.path).catch(err=>console.error("Erreur cleanup %s : %O", staging.path, err))
+                }
+                if(staging.promiseReject) {
+                    staging.promiseReject(new Error('cleanup'))
+                }
+            } catch(err) {
+                console.warn(new Date() + " downloadManager WARN Probleme suppression work %s : %O", fuuid, err)
             }
             delete this.fuuidsStaging[fuuid]
         }
@@ -315,7 +323,7 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
         pathFichier = path.join(this.pathStaging, 'chiffre', fuuid)        
     }
 
-    const url = new URL('' + this.storeConsignation.getUrlTransfert())
+    const url = new URL('' + this.getUrlTransfert())
     url.pathname = path.join(url.pathname, fuuid)
 
     try {
