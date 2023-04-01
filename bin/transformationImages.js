@@ -34,11 +34,8 @@ async function genererPosterVideo(sourcePath, opts) {
     // Effectuer les conversions pour tous les formats
     const promisesConversions = await convertir(
       mq,
-      // chiffrerTemporaire, deplacerVersStorage,
-      // clesPubliques,
       cleSecrete,
       sourceImage,
-      // pathConsignation,
       fuuid,
       conversions
     )
@@ -48,30 +45,21 @@ async function genererPosterVideo(sourcePath, opts) {
     debug("Information de conversions completees : %O", resultatConversions)
 
     return {
-      // metadataImage, metadataVideo: metadata, 
       probeVideo: probeVideoResult, conversions: resultatConversions
     }
 
   } catch(err) {
     console.error("ERROR transformationImages.genererPosterVideo Erreur creation thumbnail/poster video : %O", err)
-  } finally {
-    // tmpFile.cleanup()  // Maintenant autoclean
   }
 
 }
-
-// async function genererPreview(sourcePath, destinationPath, opts) {
-//   await _imConvertPromise([sourcePath+'[0]', '-resize', '720x540>', destinationPath]);
-// }
 
 async function genererConversionsImage(sourcePath, opts) {
   debug("genererConversionsImage avec %s", sourcePath)
   const {
     mq, clesPubliques, fuuid, cleSecrete,
-    //chiffrerTemporaire, deplacerVersStorage, pathConsignation,
   } = opts
 
-  // const b64Thumbnail = await genererThumbnail(sourcePath)
   //debug("Thumbnail genere en base64\n%s", b64Thumbnail)
   const {metadataImage, nbFrames, conversions} = await determinerConversionsImages(sourcePath)
   debug("Information de conversion d'images : %O", conversions)
@@ -79,11 +67,8 @@ async function genererConversionsImage(sourcePath, opts) {
   // Effectuer les conversions pour tous les formats
   const promisesConversions = await convertir(
     mq,
-    // chiffrerTemporaire, deplacerVersStorage,
-    // clesPubliques,
     cleSecrete,
     sourcePath,
-    // pathConsignation,
     fuuid,
     conversions
   )
@@ -99,11 +84,8 @@ async function genererConversionsImage(sourcePath, opts) {
 
 async function convertir(
   mq,
-  // chiffrerTemporaire, deplacerVersStorage,
-  // clesPubliques,
   cleSecrete,
   sourcePath,
-  // pathConsignation,
   fuuid,
   conversions
 ) {
@@ -159,15 +141,8 @@ async function convertir(
       if(cle === 'thumb') {
         // Le thumbnail est extrait et conserve dans la base de donnees
         // Chiffrer le resultat, conserver information pour transactions maitre des cles
-        // const fichierChiffreTmp = await tmp.file({ mode: 0o600, postfix: '.mgs3' })
-        // const resultatChiffrage = await chiffrerMemoire(mq.pki, fichierTmp.path, clesPubliques, {
-        //   base64: true,
-        //   identificateurs_document: {type: 'image', fuuid_reference: fuuid},
-        // })
         const resultatChiffrage = await chiffrerMemoireSecret(fichierTmp.path, cleSecrete, { base64: true })
 
-        // Traitement special pour thumbnail, on l'insere inline
-        // data = await preparerBase64(fichierChiffreTmp.path)
         // Supprimer fichiers tmp
         fichierTmp.cleanup()
 
@@ -181,7 +156,6 @@ async function convertir(
             header: resultatChiffrage.meta.header,
             format: resultatChiffrage.meta.format,
           },
-          // commandeMaitreCles: resultatChiffrage.commandeMaitreCles,
         }
 
       }
@@ -195,11 +169,7 @@ async function convertir(
 
     })
     .catch(err => {
-      // fichierChiffreTmp.cleanup()
       throw err
-    })
-    .finally(_=>{
-      // fichierTmp.cleanup()  // Supprimer fichier tmp non chiffre
     })
 
     resultatsConversions.push(promiseChiffrage)
@@ -234,10 +204,11 @@ async function determinerConversionsImages(sourcePath) {
     // Flag si c'est un PDF - conversions plus simples
     estPdf = mimetype === 'application/pdf'
 
+    let ratio = null
     if(width < height) {
       // Ratio inverse
       ratioInverse = true
-      const ratio = width / height
+      ratio = width / height
       if(ratio < (9/16)) {
         // Image tres longue, on va inverser le resize (^ plutot que >) pour garder suffisamment de detail
         operationResize = '^'
@@ -246,6 +217,13 @@ async function determinerConversionsImages(sourcePath) {
 
     // Definir valeur de reference pour la resolution (selon le ratio)
     valRef = ratioInverse?width:height
+
+    debug("Image mimetype %s, resolution %s, ratio %s, quality %s", mimetype, valRef, ratio, quality)
+
+    if(!valRef) {
+      debug("determinerConversionsImages Erreur detection resolution image - on met 720 par defaut.\n%s", JSON.stringify(metadataImage))
+      valRef = 720
+    }
 
   } catch(err) {
     debug("Erreur preparation image, aucune meta-information : %O", err)
@@ -262,17 +240,7 @@ async function determinerConversionsImages(sourcePath) {
       ext: 'jpg', resolution: 200,
       params: ['-strip', '-resize', '200x200^', '-gravity', 'center', '-extent', '200x200', '-quality', '80']
     },
-    // 'poster': {
-    //   ext: 'jpg', resolution: 320,
-    //   params: ['-strip', '-resize', ratioInverse?'320x569>':'569x320>', '-quality', '60'],
-    //   paramsFallback: ['-strip', '-resize', '320x569', '-quality', '60'],
-    // },
   }
-
-  // Grandeur originale
-  // if(valRef <= 2160) {
-  //   conversions['image/webp;2560'] = {ext: 'webp', resolution: 1440, params: ['-strip', '-resize', ratioInverse?'1440x2560'+operationResize:'2560x1440'+operationResize, '-quality', quality]}
-  // }
 
   // Grandeur standard la plus pres de l'originale
   if(estPdf) {
@@ -492,12 +460,48 @@ function genererSnapshotVideoPromise(sourcePath, previewPath) {
 //   });
 // }
 
-function readIdentify(filepath) {
+async function readIdentify(filepath) {
+
+  // Tenter identify avec methode custom
+  let infoImage = null
+  try {
+    infoImage = await new Promise((resolve, reject)=>{
+      try {
+        const commande = [
+          '-format',
+          '{\"width\":%w,\"height\":%h,\"format\":\"%m\",\"orientation\":\"%[orientation]\"}',
+          filepath + '[0]',
+        ]
+
+        im.identify(commande, (err, metadata)=>{
+          if(err) return reject(err)
+          try {
+            debug("Resultat commande custom\n%s", metadata)
+            resolve(JSON.parse(metadata))
+          } catch(err) {
+            reject(err)
+          }
+        })
+      } catch(err) {
+        reject(err)
+      }
+    })
+  } catch(err) {
+    debug("readIdentify Erreur identify custom, utiliser metadata default : ", err)
+  }
+
   return new Promise((resolve, reject)=>{
     try {
       im.identify(filepath + '[0]', (err, metadata)=>{
         if(err) return reject(err)
-        resolve(metadata)
+
+        if(!infoImage) {
+          infoImage = metadata
+        } else {
+          infoImage = {...metadata, ...infoImage}  // Donner preseance aux attributs custom
+        }
+
+        resolve(infoImage)
       })
     } catch(err) {
       reject(err)
