@@ -163,7 +163,7 @@ async function genererPreviewImage(message) {
   let stagingFichier = _downloadManager.getFichierCache(hachageFichier)
   if(!stagingFichier) {
     try {
-      cleFichier = await recupererCle(_mq, hachageFichier)
+      cleFichier = await recupererCle(_mq, hachageFichier, {nomJob: 'previewImages'})
       debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
       stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true, timeout: 25000})
     } catch(err) {
@@ -363,7 +363,7 @@ async function genererPreviewVideo(message) {
   let stagingFichier = _downloadManager.getFichierCache(hachageFichier)
   if(!stagingFichier) {
     try {
-      cleFichier = await recupererCle(_mq, hachageFichier)
+      cleFichier = await recupererCle(_mq, hachageFichier, {nomJob: 'previewVideo'})
       debug("Cle pour %s est dechiffree, info : %O", hachageFichier, cleFichier.metaCle)
       stagingFichier = await _downloadManager.downloaderFuuid(hachageFichier, cleFichier, {mimetype, dechiffrer: true, timeout: 47000})
     } catch(err) {
@@ -479,7 +479,7 @@ async function _traiterCommandeTranscodage(message) {
   let stagingFichier = _downloadManager.getFichierCache(fuuid)
   if(!stagingFichier) {
     try {
-      cleFichier = await recupererCle(_mq, fuuid)
+      cleFichier = await recupererCle(_mq, fuuid, {nomJob: 'transcodage'})
       debug("Cle pour %s est dechiffree, info : %O", fuuid, cleFichier.metaCle)
       stagingFichier = await _downloadManager.downloaderFuuid(fuuid, cleFichier, {mimetype, dechiffrer: true, timeout: 47000})
     } catch(err) {
@@ -559,7 +559,7 @@ async function _indexerDocumentContenu(message) {
 
   debug("Indexer %s type %s", fuuid, mimetype)
 
-  const cleFichier = await recupererCle(_mq, fuuid)
+  const cleFichier = await recupererCle(_mq, fuuid, {nomJob: 'indexer'})
   // const {cleDechiffree, informationCle, clesPubliques} = cleFichier
 
   // Downloader et dechiffrer le fichier

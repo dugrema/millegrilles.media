@@ -4,7 +4,8 @@ const { extraireExtensionsMillegrille } = require('@dugrema/millegrilles.utiljs/
 
 const PEM_CERT_DEBUT = '-----BEGIN CERTIFICATE-----'
 const PEM_CERT_FIN = '-----END CERTIFICATE-----'
-const L2PRIVE = '2.prive'
+const L2PRIVE = '2.prive',
+      L3PROTEGE = '3.protege'
 
 async function recupererCle(mq, hachageFichier, opts) {
   opts = opts || {}
@@ -12,7 +13,8 @@ async function recupererCle(mq, hachageFichier, opts) {
   const domaine = opts.domaine || 'GrosFichiers',
         stream = opts.stream || false,
         userId = opts.userId,
-        exchange = L2PRIVE
+        exchange = L2PRIVE,
+        nomJob = opts.nomJob || 'generique'
 
   const liste_hachage_bytes = [hachageFichier]
   // Note: permission n'est plus requise - le certificat media donne acces a toutes les cles (domaine=GrosFichiers)
@@ -29,23 +31,42 @@ async function recupererCle(mq, hachageFichier, opts) {
   }
   const clesPubliques = [reponseClesPubliques.certificat]
 
-  let action = 'getClesFichiers',
-      requete = { fuuids: liste_hachage_bytes }
-
   if(stream === true) {
     // On a un certificat 2.prive pour streaming, faire la requete via GrosFichiers
-    action = 'getClesStream'
-    requete = { user_id: userId, fuuids: liste_hachage_bytes }
+    const action = 'getClesStream'
+    const requete = { user_id: userId, fuuids: liste_hachage_bytes }
+
+    debug("Nouvelle requete dechiffrage cle a transmettre (domaine %s, action %s): %O", domaine, action, requete)
+    var reponseCle = await mq.transmettreRequete(domaine, requete, {action, exchange, ajouterCertificat: true, decoder: true})
+    debug("Reponse requete dechiffrage : %O", reponseCle)
+    if(reponseCle.acces === '5.duplication') {
+      debug("Duplication de traitement pour job %s, attendre expiration de la demande precedente ou override manuel", nomJob)
+      throw new Error('Blocage duplication traitement (OK)')
+    } else if(reponseCle.acces !== '1.permis') {
+      debug("Cle acces refuse : ", reponseCle)
+      throw new Error(`Erreur cle ${hachageFichier} : ${reponseCle.acces}`)
+      // return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}
+    }
+    debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
+
+  } else {
+    const action = 'getCleJobConversion',
+          commande = { fuuid: hachageFichier, nom_job: nomJob }
+
+    debug("Nouvelle requete dechiffrage cle a transmettre (domaine %s, action %s): %O", domaine, action, commande)
+    var reponseCle = await mq.transmettreCommande(domaine, commande, {action, exchange: L3PROTEGE, ajouterCertificat: true, decoder: true})
+    
+    debug("Reponse requete dechiffrage : %O", reponseCle)
+    if(reponseCle.acces === '5.duplication') {
+      debug("Duplication de traitement pour job %s, attendre expiration de la demande precedente ou override manuel", nomJob)
+      throw new Error('Blocage duplication traitement (OK)')
+    } else if(reponseCle.acces !== '1.permis') {
+      debug("Cle acces refuse : ", reponseCle)
+      throw new Error(`Erreur cle ${hachageFichier} : ${reponseCle.acces}`)
+      // return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}
+    }
   }
 
-  debug("Nouvelle requete dechiffrage cle a transmettre (domaine %s, action %s): %O", domaine, action, requete)
-  const reponseCle = await mq.transmettreRequete(domaine, requete, {action, exchange, ajouterCertificat: true, decoder: true})
-  debug("Reponse requete dechiffrage : %O", reponseCle)
-  if(reponseCle.acces !== '1.permis') {
-    debug("Cle acces refuse : ", reponseCle)
-    throw new Error(`Erreur cle ${hachageFichier} : ${reponseCle.acces}`)
-    // return {err: reponseCle.acces, msg: `Erreur dechiffrage cle pour generer preview de ${hachageFichier}`}
-  }
   debug("Reponse cle re-chiffree pour fichier : %O", reponseCle)
 
   // Dechiffrer cle recue
