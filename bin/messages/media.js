@@ -8,8 +8,9 @@ const urlServeurIndex = process.env.MG_ELASTICSEARCH_URL || 'http://elasticsearc
 // const activerQueuesProcessing = process.env.DISABLE_Q_PROCESSING?false:true
 
 const EXPIRATION_MESSAGE_DEFAUT = 15 * 60 * 1000,  // 15 minutes en millisec
-      EXPIRATION_COMMANDE_TRANSCODAGE = 30 * 60 * 1000  // 30 minutes en millisec
-
+      EXPIRATION_COMMANDE_TRANSCODAGE = 30 * 60 * 1000,  // 30 minutes en millisec
+      EXPIRATION_MESSAGE_VIDEO = 10 * 60 * 1000   // minutes en millisec
+      
 const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
       ACTION_SAUVEGARDERCLE = 'sauvegarderCle',
       DOMAINE_GROSFICHIERS = 'GrosFichiers'
@@ -50,7 +51,9 @@ function changementConsignation(consignationTransfert) {
   if(consignationId && _consignationId !== consignationId) {
     _consignationId = consignationId
     debug("Changement de consignation pour ID ", consignationId)
-    enregistrerChannel()
+    if(activerQueuesProcessing === true) {
+      enregistrerChannel()
+    }
   }
 }
 
@@ -63,56 +66,68 @@ function enregistrerChannel() {
     debug("!!! TODO - retirer vieilles queues")
   }
 
-  const exchange = '2.prive'
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
-    [`commande.media.${_consignationId}.jobConversionVideoDisponible`],
-    {
-      qCustom: 'video',
-      exchange,
-    }
-  )
+  return Promise.resolve()
+    .then(async()=>{
+      // Creer nouvelles queues
+      await _mq.ajouterQueueCustom('image', {ttl: EXPIRATION_MESSAGE_DEFAUT, name: `media/${_consignationId}/image`, autoDelete: false})
+      await _mq.ajouterQueueCustom('pdf', {ttl: EXPIRATION_MESSAGE_DEFAUT, name: `media/${_consignationId}/pdf`, autoDelete: false})
+      await _mq.ajouterQueueCustom('video', {ttl: EXPIRATION_MESSAGE_VIDEO, name: `media/${_consignationId}/video`, preAck: true, autoDelete: false})
+      await _mq.ajouterQueueCustom('indexation', {ttl: EXPIRATION_MESSAGE_DEFAUT, name: `media/${_consignationId}/indexation`, preAck: true, autoDelete: false})
 
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return genererPreviewImage(message)},
-    [`commande.media.${_consignationId}.genererPosterImage`],
-    {
-      qCustom: 'image',
-      exchange,
-    }
-  )
-
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return genererPreviewImage(message)},
-    [`commande.media.${_consignationId}.genererPosterPdf`],
-    {
-      qCustom: 'pdf',
-      exchange,
-    }
-  )
-
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{return genererPreviewVideo(message)},
-    [`commande.media.${_consignationId}.genererPosterVideo`],
-    {
-      // operationLongue: true,
-      qCustom: 'image',
-      exchange,
-    }
-  )
-
-  // Exchange 3.protege (default) uniquement
-  _mq.routingKeyManager.addRoutingKeyCallback(
-    (routingKey, message)=>{
-      debug("indexerContenu : rk (%s) = %O", routingKey, message)
-      return _indexerDocumentContenu(message)
-    },
-    [`commande.media.${_consignationId}.indexerContenu`],
-    {
-      // operationLongue: true,
-      qCustom: 'indexation',
-    }
-  )
+      const exchange = '2.prive'
+      _mq.routingKeyManager.addRoutingKeyCallback(
+        (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
+        [`commande.media.${_consignationId}.jobConversionVideoDisponible`],
+        {
+          qCustom: 'video',
+          exchange,
+        }
+      )
+    
+      _mq.routingKeyManager.addRoutingKeyCallback(
+        (routingKey, message)=>{return genererPreviewImage(message)},
+        [`commande.media.${_consignationId}.genererPosterImage`],
+        {
+          qCustom: 'image',
+          exchange,
+        }
+      )
+    
+      _mq.routingKeyManager.addRoutingKeyCallback(
+        (routingKey, message)=>{return genererPreviewImage(message)},
+        [`commande.media.${_consignationId}.genererPosterPdf`],
+        {
+          qCustom: 'pdf',
+          exchange,
+        }
+      )
+    
+      _mq.routingKeyManager.addRoutingKeyCallback(
+        (routingKey, message)=>{return genererPreviewVideo(message)},
+        [`commande.media.${_consignationId}.genererPosterVideo`],
+        {
+          // operationLongue: true,
+          qCustom: 'image',
+          exchange,
+        }
+      )
+    
+      // Exchange 3.protege (default) uniquement
+      _mq.routingKeyManager.addRoutingKeyCallback(
+        (routingKey, message)=>{
+          debug("indexerContenu : rk (%s) = %O", routingKey, message)
+          return _indexerDocumentContenu(message)
+        },
+        [`commande.media.${_consignationId}.indexerContenu`],
+        {
+          // operationLongue: true,
+          qCustom: 'indexation',
+        }
+      )
+    })
+    .catch(err=>{
+      console.error(new Date() + " media.enregistrerChannel ERROR ", err)
+    })
 
 }
 
