@@ -33,17 +33,19 @@ async function init(opts) {
   }
 
   // Connecter a MilleGrilles avec AMQP DAO
-  // const nomsQCustom = ['image', 'video', 'publication']
   const qCustom = {}
   if(activerQueuesProcessing) {
-      qCustom.image = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/image'}
-      qCustom.pdf = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/pdf'}
-      
-      // transcodage peut prendre plus de 30 minutes (ACK timeout)
-      qCustom.video = {ttl: EXPIRATION_MESSAGE_VIDEO, name: 'media/video', preAck: true}
+    const commonName = instPki.cert.subject.getField('CN').value
+    debug("Creer Qs de traitement media avec common name : ", commonName)
 
-      // indexation peut prendre plus de 30 minutes (ACK timeout)
-      qCustom.indexation = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: 'media/indexation', preAck: true}
+    qCustom.image = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: `media/${commonName}/image`, autoDelete: false}
+    qCustom.pdf = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: `media/${commonName}/pdf`, autoDelete: false}
+    
+    // transcodage peut prendre plus de 30 minutes (ACK timeout)
+    qCustom.video = {ttl: EXPIRATION_MESSAGE_VIDEO, name: `media/${commonName}/video`, preAck: true, autoDelete: false}
+
+    // indexation peut prendre plus de 30 minutes (ACK timeout)
+    qCustom.indexation = {ttl: EXPIRATION_MESSAGE_DEFAUT, name: `media/${commonName}/indexation`, preAck: true, autoDelete: false}
   } else {
     console.info("INFO: amqpdao Q processing est desactive")
   }

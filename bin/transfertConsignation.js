@@ -145,4 +145,16 @@ async function creerEtat(pathFichier, hachage) {
   await fsPromises.writeFile(pathEtat, JSON.stringify(etat))
 }
 
-module.exports = { init, stagerFichier, stagerStream }
+function getIdConsignation() {
+  if(_fichiersTransfert) return _fichiersTransfert.getIdConsignation()
+}
+
+function ajouterListener(listener) {
+  _fichiersTransfert.ajouterListener(listener)
+}
+
+function retirerListener(listener) {
+  _fichiersTransfert.retirerListener
+}
+
+module.exports = { init, stagerFichier, stagerStream, getIdConsignation, ajouterListener, retirerListener }

@@ -18,7 +18,9 @@ const DOMAINE_MAITREDESCLES = 'MaitreDesCles',
 var _mq = null,
     _transfertConsignation = null,
     _downloadManager = null,
-    activerQueuesProcessing = true
+    activerQueuesProcessing = true,
+    _consignationId = null,
+    _consignationIdQueues = null
 
 function setMq(mq, opts) {
   opts = opts || {}
@@ -33,6 +35,9 @@ function setHandlers(mq, transfertConsignation, downloadManager) {
   if(!_mq) setMq(mq)
   _transfertConsignation = transfertConsignation
   _downloadManager = downloadManager
+
+  const idTransfert = _transfertConsignation.getIdConsignation()
+  _transfertConsignation.ajouterListener(changementConsignation)
 }
 
 // Appele lors d'une reconnexion MQ
@@ -40,48 +45,61 @@ function on_connecter() {
   if(activerQueuesProcessing) enregistrerChannel()
 }
 
+function changementConsignation(consignationTransfert) {
+  const consignationId = consignationTransfert.getIdConsignation()
+  if(consignationId && _consignationId !== consignationId) {
+    _consignationId = consignationId
+    debug("Changement de consignation pour ID ", consignationId)
+    enregistrerChannel()
+  }
+}
+
 function enregistrerChannel() {
+  if(!_consignationId || _consignationIdQueues === _consignationId) return   // Rien a faire
 
-  // Exchanges 2.prive et 3.protege
-  ['2.prive', '3.protege'].map(exchange=>{
-    _mq.routingKeyManager.addRoutingKeyCallback(
-      (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
-      ['commande.fichiers.jobConversionVideoDisponible'],
-      {
-        qCustom: 'video',
-        exchange,
-      }
-    )
+  debug("enregistrerChannel Transfert Consignation ", _transfertConsignation)
 
-    _mq.routingKeyManager.addRoutingKeyCallback(
-      (routingKey, message)=>{return genererPreviewImage(message)},
-      ['commande.fichiers.genererPosterImage'],
-      {
-        qCustom: 'image',
-        exchange,
-      }
-    )
+  if(_consignationIdQueues && _consignationIdQueues !== _consignationId) {
+    debug("!!! TODO - retirer vieilles queues")
+  }
 
-    _mq.routingKeyManager.addRoutingKeyCallback(
-      (routingKey, message)=>{return genererPreviewImage(message)},
-      ['commande.fichiers.genererPosterPdf'],
-      {
-        qCustom: 'pdf',
-        exchange,
-      }
-    )
+  const exchange = '2.prive'
+  _mq.routingKeyManager.addRoutingKeyCallback(
+    (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
+    [`commande.media.${_consignationId}.jobConversionVideoDisponible`],
+    {
+      qCustom: 'video',
+      exchange,
+    }
+  )
 
-    _mq.routingKeyManager.addRoutingKeyCallback(
-      (routingKey, message)=>{return genererPreviewVideo(message)},
-      ['commande.fichiers.genererPosterVideo'],
-      {
-        // operationLongue: true,
-        qCustom: 'image',
-        exchange,
-      }
-    )
+  _mq.routingKeyManager.addRoutingKeyCallback(
+    (routingKey, message)=>{return genererPreviewImage(message)},
+    [`commande.media.${_consignationId}.genererPosterImage`],
+    {
+      qCustom: 'image',
+      exchange,
+    }
+  )
 
-  })
+  _mq.routingKeyManager.addRoutingKeyCallback(
+    (routingKey, message)=>{return genererPreviewImage(message)},
+    [`commande.media.${_consignationId}.genererPosterPdf`],
+    {
+      qCustom: 'pdf',
+      exchange,
+    }
+  )
+
+  _mq.routingKeyManager.addRoutingKeyCallback(
+    (routingKey, message)=>{return genererPreviewVideo(message)},
+    [`commande.media.${_consignationId}.genererPosterVideo`],
+    {
+      // operationLongue: true,
+      qCustom: 'image',
+      exchange,
+    }
+  )
 
   // Exchange 3.protege (default) uniquement
   _mq.routingKeyManager.addRoutingKeyCallback(
@@ -89,7 +107,7 @@ function enregistrerChannel() {
       debug("indexerContenu : rk (%s) = %O", routingKey, message)
       return _indexerDocumentContenu(message)
     },
-    ['commande.fichiers.indexerContenu'],
+    [`commande.media.${_consignationId}.indexerContenu`],
     {
       // operationLongue: true,
       qCustom: 'indexation',
