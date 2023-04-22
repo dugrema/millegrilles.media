@@ -4,6 +4,8 @@ const tmpPromises = require('tmp-promise')
 const path = require('path')
 const FFmpeg = require('fluent-ffmpeg')
 
+const { MESSAGE_KINDS } = require('@dugrema/millegrilles.utiljs/src/constantes')
+
 const transfertConsignation = require('./transfertConsignation')
 
 const CONST_INTERVALLE_UPDATE = 3 * 1000
@@ -478,7 +480,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, message, opts) {
         }
 
         const transactionAssocierVideo = await mq.pki.formatterMessage(
-          video, 'GrosFichiers', {action: 'associerVideo', ajouterCertificat: true})
+          video, 'GrosFichiers', {kind: MESSAGE_KINDS.KIND_COMMANDE, action: 'associerVideo', ajouterCertificat: true})
         debug("Transaction transcoder video : %O", transactionAssocierVideo)
         
         return transactionAssocierVideo

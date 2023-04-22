@@ -1,4 +1,7 @@
 const debug = require('debug')('messages:media')
+
+const { MESSAGE_KINDS } = require('@dugrema/millegrilles.utiljs/src/constantes')
+
 const traitementMedia = require('../traitementMedia.js')
 const { traiterCommandeTranscodage, progressUpdate } = require('../transformationsVideo')
 // const transfertConsignation = require('../transfertConsignation')
@@ -282,7 +285,9 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
       }
 
       const transactionSignee = await _mq.pki.formatterMessage(
-        transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
+        transactionContenu, DOMAINE_GROSFICHIERS, 
+        {kind: MESSAGE_KINDS.KIND_COMMANDE, action: 'associerConversions', ajouterCertificat: true}
+      )
       debug("Transaction thumbnails : ", transactionSignee)
 
       return transactionSignee
@@ -318,7 +323,9 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
       }
 
       const transactionSignee = await _mq.pki.formatterMessage(
-        transactionContenu, DOMAINE_GROSFICHIERS, {action: 'associerConversions', ajouterCertificat: true})
+        transactionContenu, DOMAINE_GROSFICHIERS, 
+        {kind: MESSAGE_KINDS.KIND_COMMANDE, action: 'associerConversions', ajouterCertificat: true}
+      )
       debug("Transaction contenu image : %O", transactionContenu)
       
       return transactionSignee
