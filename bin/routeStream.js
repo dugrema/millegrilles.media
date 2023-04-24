@@ -62,6 +62,7 @@ async function downloadVideoPrive(req, res, next) {
         // Downloader fichier
         try {
             downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype, dechiffrer: true})
+                .catch(err=>console.error(new Date() + ' routeStream.downloadVideoPrive ERROR Echec downloaderFuuid ', err))
             download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})    
         } catch(err) {
             console.error(new Date() + " routeStream.downloadVideoPrive Erreur download %s vers cache : %O", fuuid, err)
