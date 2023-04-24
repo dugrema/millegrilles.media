@@ -419,8 +419,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, message, opts) {
     // Transmettre evenement debut de transcodage
     mq.emettreEvenement(
       {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, user_id}, 
-      `evenement.fichiers.${fuuid}.transcodageDebut`, 
-      {exchange: '2.prive'}
+      {domaine: 'fichiers', action: 'transcodageDebut', partition: fuuid, exchange: '2.prive'}
     )
 
     // Fonction de progres
@@ -480,7 +479,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, message, opts) {
         }
 
         const transactionAssocierVideo = await mq.pki.formatterMessage(
-          video, 'GrosFichiers', {kind: MESSAGE_KINDS.KIND_COMMANDE, action: 'associerVideo', ajouterCertificat: true})
+          MESSAGE_KINDS.KIND_COMMANDE, video, {domaine: 'GrosFichiers', action: 'associerVideo', ajouterCertificat: true})
         debug("Transaction transcoder video : %O", transactionAssocierVideo)
         
         return transactionAssocierVideo
@@ -494,7 +493,7 @@ async function traiterCommandeTranscodage(mq, fichierDechiffre, message, opts) {
     progressCb({percent: -1}, {etat: 'erreur'})
     mq.emettreEvenement(
       {fuuid, mimetype, videoCodec, videoQuality, videoBitrate, height, user_id, err: ''+err}, 
-      `evenement.fichiers.${fuuid}.transcodageErreur`
+      {domaine: 'fichiers', action: 'transcodageErreur', partition: fuuid, exchange: '2.prive', ajouterCertificat: true}
     )
     throw err
   }
@@ -577,7 +576,10 @@ function progressUpdate(mq, paramsVideo, progress) {
 
     const contenuEvenement = {...paramsVideo, pctProgres, passe: progress.passe}
     // mq.emettreEvenement(contenuEvenement, domaineAction)
-    mq.emettreEvenement(contenuEvenement, 'fichiers', {exchange: '2.prive', partition, action: 'transcodageProgres'})
+    mq.emettreEvenement(
+      contenuEvenement, 
+      {domaine: 'fichiers', action: 'transcodageProgres', partition, exchange: '2.prive', ajouterCertificat: true}      
+    )
       .catch(err=>debug("Erreur emission transcodage progres (%O) : %O", contenuEvenement, err))
   }
 }

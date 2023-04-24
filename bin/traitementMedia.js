@@ -76,10 +76,11 @@ async function indexerDocument(mq, fichierDechiffre, message, optsConversion) {
       dateModification: documentFichier.modification,
       result: rep.data.result,
     }
-    mq.emettreEvenement(info, 'evenement.fichiers.indexationFichier')
-      .catch(err=>{
-        console.error('ERROR traitementMedia.indexerDocument Erreur emission evenement confirmation %O', err)
-      })
+    throw new Error('todo - fix me')
+    // mq.emettreEvenement(info, 'evenement.fichiers.indexationFichier')
+    //   .catch(err=>{
+    //     console.error('ERROR traitementMedia.indexerDocument Erreur emission evenement confirmation %O', err)
+    //   })
   } else {
     console.error("ERROR traitementMedia.indexerDocument traitement indexation PDF pour fichier %s %O", rep.status, rep.data)
   }

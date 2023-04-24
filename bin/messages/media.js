@@ -60,6 +60,16 @@ function changementConsignation(consignationTransfert) {
   }
 }
 
+function parseMessage(message) {
+  try {
+    const parsed = JSON.parse(message.contenu)
+    parsed['__original'] = message
+    return parsed
+  } catch(err) {
+    console.error(new Date() + ' media.parseMessage Erreur traitement %O\n%O', err, message)
+  }
+}
+
 function enregistrerChannel() {
   if(!_consignationId || _consignationIdQueues === _consignationId) return   // Rien a faire
 
@@ -79,7 +89,7 @@ function enregistrerChannel() {
 
       const exchange = '2.prive'
       _mq.routingKeyManager.addRoutingKeyCallback(
-        (routingKey, message)=>{return _traiterCommandeTranscodage(message)},
+        (routingKey, message)=>{return _traiterCommandeTranscodage(parseMessage(message))},
         [`commande.media.${_consignationId}.jobConversionVideoDisponible`],
         {
           qCustom: 'video',
@@ -88,7 +98,7 @@ function enregistrerChannel() {
       )
     
       _mq.routingKeyManager.addRoutingKeyCallback(
-        (routingKey, message)=>{return genererPreviewImage(message)},
+        (routingKey, message)=>{return genererPreviewImage(parseMessage(message))},
         [`commande.media.${_consignationId}.genererPosterImage`],
         {
           qCustom: 'image',
@@ -97,7 +107,7 @@ function enregistrerChannel() {
       )
     
       _mq.routingKeyManager.addRoutingKeyCallback(
-        (routingKey, message)=>{return genererPreviewImage(message)},
+        (routingKey, message)=>{return genererPreviewImage(parseMessage(message))},
         [`commande.media.${_consignationId}.genererPosterPdf`],
         {
           qCustom: 'pdf',
@@ -106,7 +116,7 @@ function enregistrerChannel() {
       )
     
       _mq.routingKeyManager.addRoutingKeyCallback(
-        (routingKey, message)=>{return genererPreviewVideo(message)},
+        (routingKey, message)=>{return genererPreviewVideo(parseMessage(message))},
         [`commande.media.${_consignationId}.genererPosterVideo`],
         {
           // operationLongue: true,
@@ -119,7 +129,7 @@ function enregistrerChannel() {
       _mq.routingKeyManager.addRoutingKeyCallback(
         (routingKey, message)=>{
           debug("indexerContenu : rk (%s) = %O", routingKey, message)
-          return _indexerDocumentContenu(message)
+          return _indexerDocumentContenu(parseMessage(message))
         },
         [`commande.media.${_consignationId}.indexerContenu`],
         {
@@ -285,8 +295,8 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
       }
 
       const transactionSignee = await _mq.pki.formatterMessage(
-        transactionContenu, DOMAINE_GROSFICHIERS, 
-        {kind: MESSAGE_KINDS.KIND_COMMANDE, action: 'associerConversions', ajouterCertificat: true}
+        MESSAGE_KINDS.KIND_COMMANDE, transactionContenu,
+        {domaine: DOMAINE_GROSFICHIERS, action: 'associerConversions', ajouterCertificat: true}
       )
       debug("Transaction thumbnails : ", transactionSignee)
 
@@ -323,8 +333,8 @@ async function traiterConversions(fuuid, conversions, clesPubliques, transaction
       }
 
       const transactionSignee = await _mq.pki.formatterMessage(
-        transactionContenu, DOMAINE_GROSFICHIERS, 
-        {kind: MESSAGE_KINDS.KIND_COMMANDE, action: 'associerConversions', ajouterCertificat: true}
+        MESSAGE_KINDS.KIND_COMMANDE, transactionContenu, 
+        {domaine: DOMAINE_GROSFICHIERS, action: 'associerConversions', ajouterCertificat: true}
       )
       debug("Transaction contenu image : %O", transactionContenu)
       
