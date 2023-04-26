@@ -251,7 +251,7 @@ MediaDownloadManager.prototype.cleanupWork = async function() {
         debug("Entry fichier work : %s", fullPath)
         const { mtimeMs } = stats
         if(mtimeMs < dateExpiration) {
-            fsPromises.unlink(fullPath).catch(err=>console.error("Erreur cleanup work fichier %s : %O", fullPath, err))
+            fsPromises.rm(fullPath).catch(err=>console.error("Erreur cleanup work fichier %s : %O", fullPath, err))
         }
     }
 }
@@ -294,7 +294,7 @@ MediaDownloadManager.prototype.entretien = async function() {
             try {
                 if(staging.path) {
                     debug("entretien Supprimer fichier %s", staging.path)
-                    fsPromises.unlink(staging.path).catch(err=>console.error("Erreur cleanup %s : %O", staging.path, err))
+                    fsPromises.rm(staging.path).catch(err=>console.error("Erreur cleanup %s : %O", staging.path, err))
                 }
                 if(staging.promiseReject) {
                     staging.promiseReject(new Error('cleanup'))
@@ -398,7 +398,7 @@ MediaDownloadManager.prototype.getFichier = async function(fuuid) {
         return pathFichier
     } catch(err) {
         // Supprimer fichier work
-        fsPromises.unlink(pathFichierWork)
+        fsPromises.rm(pathFichierWork)
             .catch(err=>{
                 if(err.code === 'ENOENT') return  // Ok, fichier n'existait pas
                 console.error("Erreur supprimer fichier work %s : %O", pathFichierWork, err)

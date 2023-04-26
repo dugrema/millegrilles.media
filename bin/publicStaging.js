@@ -147,7 +147,7 @@ async function cleanupStaging() {
       // debug("Info fichier %s: %O", filePath, stat)
       if(stats.mtimeMs < expirationMs) {
         debug("Cleanup fichier download staging %s", entry.fullPath)
-        await fsPromises.unlink(entry.fullPath)
+        await fsPromises.rm(entry.fullPath)
       }
     } catch(err) {
       console.error("ERROR publicStaging.cleanupStaing %O", err)
