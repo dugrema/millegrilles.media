@@ -66,17 +66,26 @@ async function downloadVideoPrive(req, res, next) {
             download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})    
         } catch(err) {
             console.error(new Date() + " routeStream.downloadVideoPrive Erreur download %s vers cache : %O", fuuid, err)
-            return res.sendStatus(500)
+            download.err = err
+            return res.status(500).send({ok: false, err: ''+err})
         }
     }
 
     const staging = download
 
-    if(staging.timeout === true || !staging.path) {
+    if(staging.err) {
+        return res.status(500).send({ok: false, err: ''+err})
+    }
+
+    if(staging.size === undefined || staging.position === undefined) {
+        // Erreur - aucune information de chargement
+        res.setHeader('Content-Type', mimetype)
+        return res.status(500).send({ok: false, err: 'Aucune information de chargement'})
+    } else if(staging.timeout === true || !staging.path) {
         // Retourner info de progres
         res.setHeader('Content-Type', mimetype)
-        res.setHeader('X-File-Size', staging.size)
-        res.setHeader('X-File-Position', staging.position)
+        res.setHeader('X-File-Size', staging.size || 0)
+        res.setHeader('X-File-Position', staging.position || 0)
         return res.sendStatus(202)
     }
 
