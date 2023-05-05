@@ -35,70 +35,81 @@ async function downloadVideoPrive(req, res, next) {
           roles = res.roles || [],
           mimetype = res.mimetype
 
-    let download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})
-    if(download === false || !download.cle) {
-        debug("downloadVideoPrive Fichier absent du cache, downloader ", fuuid)
+    try {
+        let download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})
+        if(download === false || !download.cle) {
+            debug("downloadVideoPrive Fichier absent du cache, downloader ", fuuid)
 
-        // Recuperer la cle de dechiffrage
-        let domaine = 'GrosFichiers'
-        if(roles.includes('messagerie_web')) domaine = 'Messagerie'
-    
-        debug("Demande cle dechiffrage a %s (stream: true)", domaine)
-        const cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
-        debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
-    
-        if(!cleDechiffrage || !cleDechiffrage.metaCle) {
-            debug("Acces cle refuse : ", cleDechiffrage)
-            return res.sendStatus(403)
+            // Recuperer la cle de dechiffrage
+            let domaine = 'GrosFichiers'
+            if(roles.includes('messagerie_web')) domaine = 'Messagerie'
+        
+            debug("Demande cle dechiffrage a %s (stream: true)", domaine)
+            try {
+                const cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
+                debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
+            } catch(err) {
+                debug("Acces cle refuse : ", err)
+                return res.sendStatus(403)
+            }
+        
+            if(!cleDechiffrage || !cleDechiffrage.metaCle) {
+                debug("Acces cle refuse : ", cleDechiffrage)
+                return res.sendStatus(403)
+            }
+
+            // Injecter params de dechiffrage custom si video est transcode (pas original)
+            const metaCle = cleDechiffrage.metaCle
+            metaCle.header = header || metaCle.header
+            metaCle.iv = iv || metaCle.iv
+            metaCle.tag = tag || metaCle.tag
+            metaCle.format = format || metaCle.format
+
+            // Downloader fichier
+            try {
+                downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype, dechiffrer: true})
+                    .catch(err=>console.error(new Date() + ' routeStream.downloadVideoPrive ERROR Echec downloaderFuuid ', err))
+                download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})    
+            } catch(err) {
+                console.error(new Date() + " routeStream.downloadVideoPrive Erreur download %s vers cache : %O", fuuid, err)
+                download.err = err
+                return res.status(500).send({ok: false, err: ''+err})
+            }
         }
 
-        // Injecter params de dechiffrage custom si video est transcode (pas original)
-        const metaCle = cleDechiffrage.metaCle
-        metaCle.header = header || metaCle.header
-        metaCle.iv = iv || metaCle.iv
-        metaCle.tag = tag || metaCle.tag
-        metaCle.format = format || metaCle.format
+        const staging = download
 
-        // Downloader fichier
-        try {
-            downloadManager.downloaderFuuid(fuuid, cleDechiffrage, {mimetype, dechiffrer: true})
-                .catch(err=>console.error(new Date() + ' routeStream.downloadVideoPrive ERROR Echec downloaderFuuid ', err))
-            download = await downloadManager.attendreDownload(fuuid, {timeout: TIMEOUT_HEAD})    
-        } catch(err) {
-            console.error(new Date() + " routeStream.downloadVideoPrive Erreur download %s vers cache : %O", fuuid, err)
-            download.err = err
+        if(staging.err) {
             return res.status(500).send({ok: false, err: ''+err})
         }
+
+        if(staging.size === undefined || staging.position === undefined) {
+            // Erreur - aucune information de chargement
+            res.setHeader('Content-Type', mimetype)
+            return res.status(500).send({ok: false, err: 'Aucune information de chargement'})
+        } else if(staging.timeout === true || !staging.path) {
+            // Retourner info de progres
+            res.setHeader('Content-Type', mimetype)
+            res.setHeader('X-File-Size', staging.size || 0)
+            res.setHeader('X-File-Position', staging.position || 0)
+            return res.sendStatus(202)
+        }
+
+        res.staging = staging   // Conserver pour cleanup
+
+        const statFichier = await fsPromises.stat(staging.path)
+        res.statFichier = statFichier
+
+        const contentLength = statFichier.size
+        // Calculer taille video pour mgs4
+        // const overheadLength = Math.ceil((contentLength / ((64 * 1024)+17))) * 17
+        // const decryptedContentLength = contentLength - overheadLength
+        res.contentLength = contentLength
+    } catch(err) {
+        debug("routeStream.downloadVideoPrive ERROR ", err)
+        console.error(new Date() + ' routeStream.downloadVideoPrive ERROR ', err)
+        return res.sendStatus(500)
     }
-
-    const staging = download
-
-    if(staging.err) {
-        return res.status(500).send({ok: false, err: ''+err})
-    }
-
-    if(staging.size === undefined || staging.position === undefined) {
-        // Erreur - aucune information de chargement
-        res.setHeader('Content-Type', mimetype)
-        return res.status(500).send({ok: false, err: 'Aucune information de chargement'})
-    } else if(staging.timeout === true || !staging.path) {
-        // Retourner info de progres
-        res.setHeader('Content-Type', mimetype)
-        res.setHeader('X-File-Size', staging.size || 0)
-        res.setHeader('X-File-Position', staging.position || 0)
-        return res.sendStatus(202)
-    }
-
-    res.staging = staging   // Conserver pour cleanup
-
-    const statFichier = await fsPromises.stat(staging.path)
-    res.statFichier = statFichier
-
-    const contentLength = statFichier.size
-    // Calculer taille video pour mgs4
-    // const overheadLength = Math.ceil((contentLength / ((64 * 1024)+17))) * 17
-    // const decryptedContentLength = contentLength - overheadLength
-    res.contentLength = contentLength
 
     try {
         debug("downloadVideoPrive Pipe stream dechiffrage pour ", fuuid)
