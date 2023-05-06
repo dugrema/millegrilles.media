@@ -46,15 +46,14 @@ async function downloadVideoPrive(req, res, next) {
         
             debug("Demande cle dechiffrage a %s (stream: true)", domaine)
             try {
-                const cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
+                var cleDechiffrage = await recupererCle(mq, cleRefFuuid, {stream: true, domaine, userId})
                 debug("Cle dechiffrage recue : %O", cleDechiffrage.metaCle)
+                if(!cleDechiffrage || !cleDechiffrage.metaCle) {
+                    debug("Acces cle refuse : ", cleDechiffrage)
+                    return res.sendStatus(403)
+                }
             } catch(err) {
                 debug("Acces cle refuse : ", err)
-                return res.sendStatus(403)
-            }
-        
-            if(!cleDechiffrage || !cleDechiffrage.metaCle) {
-                debug("Acces cle refuse : ", cleDechiffrage)
                 return res.sendStatus(403)
             }
 
@@ -86,7 +85,8 @@ async function downloadVideoPrive(req, res, next) {
         if(staging.size === undefined || staging.position === undefined) {
             // Erreur - aucune information de chargement
             res.setHeader('Content-Type', mimetype)
-            return res.status(500).send({ok: false, err: 'Aucune information de chargement'})
+            debug("downloadVideoPrive Erreur staging, aucune information de position chargement pour %s\nDownload info %O", req.url, download)
+            return res.status(500).send({ok: false, err: 'Staging : Aucune information de chargement'})
         } else if(staging.timeout === true || !staging.path) {
             // Retourner info de progres
             res.setHeader('Content-Type', mimetype)
@@ -123,7 +123,7 @@ async function downloadVideoPrive(req, res, next) {
 
             res.setHeader('Content-Length', infoRange.End - infoRange.Start + 1)
         } else {
-            res.setHeader('Content-Length', contentLength)
+            res.setHeader('Content-Length', res.contentLength)
         }
 
         res.setHeader('Content-Type', mimetype)
