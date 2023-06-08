@@ -131,7 +131,8 @@ async function downloadVideoPrive(req, res, next) {
         res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
         res.setHeader('Accept-Ranges', 'bytes')
 
-        res.status(200)
+        // res.status(200)
+        res.status(206)
 
         // Next pipe la reponse dechiffree sur GET
         next()
