@@ -1,4 +1,4 @@
-REPO=docker.maceroc.com
+REPO=docker.maple.maceroc.com:5000
 # DOCKERHUB_REPO=dugremat
 NAME=millegrilles_media
 ARCH_SUPPORTEES=( x86_64 aarch64 )
