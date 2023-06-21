@@ -3,6 +3,6 @@ REPO=docker.maple.maceroc.com:5000
 NAME=millegrilles_media
 ARCH_SUPPORTEES=( x86_64 aarch64 )
 BRANCH=`git rev-parse --abbrev-ref HEAD`
-BUILD=0
+BUILD=1
 
 VERSION=$BRANCH.$BUILD
